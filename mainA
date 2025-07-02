@@ -1,45 +1,51 @@
 import json
 from bot.bot import Bot
 from bot.handler import MessageHandler, BotButtonCommandHandler
+import time
 
-TOKEN = "001.1806729577.0340071044:1011814127"  # your token here
+TOKEN = "001.1806729577.0340071044:1011814127"  # ваш токен
+TELEGRAM_CHANNEL = "https://t.me/IT_105Koderline"  # Ссылка на канал
+
 bot = Bot(token=TOKEN)
 
-def buttons_answer_cb(bot, event):
-    if event.data['callbackData'] == "call_back_id_2":
-        bot.answer_callback_query(
-            query_id=event.data['queryId'],
-            text="Hey! It's a working button 2.",
-            show_alert=True
-        )
-    elif event.data['callbackData'] == "call_back_id_3":
-        bot.answer_callback_query(
-            query_id=event.data['queryId'],
-            text="Hey! It's a working button 3.",
-            show_alert=False
-        )
+def send_news(bot, chat_id):
+    """Отправляет сообщение с ссылкой на Telegram-канал"""
+    bot.send_text(
+        chat_id=chat_id,
+        text=f"📢 Актуальные новости компании доступны в нашем Telegram-канале:\n\n{TELEGRAM_CHANNEL}",
+        inline_keyboard_markup=json.dumps([[
+            {
+                "text": "📨 Перейти в Telegram", 
+                "url": TELEGRAM_CHANNEL,
+                "style": "primary"
+            }
+        ]])
+    )
 
 def message_cb(bot, event):
-    text = event.text.lower().strip()  # Нормализуем текст команды
+    text = event.text.lower().strip()
     
-    if text == "/help":  # Кнопки только на /help
+    if text == "/help":
         bot.send_text(
             chat_id=event.from_chat,
-            text="Выберите действие:",
+            text="Доступные команды:",
             inline_keyboard_markup=json.dumps([[
-                {"text": "Контакты", "url": "https://105.ooo/#rec758397817"},
-                {"text": "Новости", "url": "https://t.me/IT_105Koderline"},
-                {"text": "О нас", "url": "https://105.ooo/#rec756415377"}
+                {"text": "Новости", "callbackData": "news_cmd"}
             ]])
         )
-    else:
-        bot.send_text(
-            chat_id=event.from_chat,
-            text="Напишите /help для вывода меню"  # Стандартный ответ
-        )
+    elif text == "/news":
+        send_news(bot, event.from_chat)
+
+def button_news_cb(bot, event):
+    if event.data['callbackData'] == "news_cmd":
+        send_news(bot, event.from_chat)
 
 bot.dispatcher.add_handler(MessageHandler(callback=message_cb))
-bot.dispatcher.add_handler(BotButtonCommandHandler(callback=buttons_answer_cb))
+bot.dispatcher.add_handler(BotButtonCommandHandler(callback=button_news_cb))
 
 bot.start_polling()
-bot.idle()
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    print("Бот остановлен")
