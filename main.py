@@ -13,22 +13,22 @@ bot = Bot(token=TOKEN)
 user_states = {}
 
 def start_command_buttons(chat_id): #сообщение с кнопками для действий
-    bot.send_text(
+   bot.send_text(
         chat_id=chat_id,
         text="Выберите действие ниже:",
         inline_keyboard_markup=json.dumps([
             [
-                {"text": "📞 Контакты", "callbackData": "cmd_/contacts", "style": "primary"},
-                {"text": "📰 Новости", "callbackData": "cmd_/news", "style": "primary"},
-                {"text": "🏢 О компании", "callbackData": "cmd_/about", "style": "primary"}
+                {"text": "📞 Контакты", "callbackData": "user_cmd_/contacts", "style": "primary"},
+                {"text": "📰 Новости", "callbackData": "user_cmd_/news", "style": "primary"},
+                {"text": "🏢 О компании", "callbackData": "user_cmd_/about", "style": "primary"}
             ],
             [
-                {"text": "📚 1С Документы", "callbackData": "cmd_/1c_docs", "style": "primary"},
-                {"text": "⭐ 1С Отзывы", "callbackData": "cmd_/1c_reviews", "style": "primary"}
+                {"text": "📚 1С Документы", "callbackData": "user_cmd_/1c_docs", "style": "primary"},
+                {"text": "⭐ 1С Отзывы", "callbackData": "user_cmd_/1c_reviews", "style": "primary"}
             ],
             [
-                {"text": "🛟 Поддержка", "callbackData": "cmd_/support", "style": "primary"},
-                {"text": "📋 Мои тикеты", "callbackData": "cmd_/my_tickets", "style": "primary"}
+                {"text": "🛟 Поддержка", "callbackData": "user_cmd_/support", "style": "primary"},
+                {"text": "📋 Мои тикеты", "callbackData": "user_cmd_/my_tickets", "style": "primary"}
             ]
         ])
     )
@@ -44,9 +44,11 @@ def send_welcome(chat_id): #приветственное сообщение пр
         "Выберите действие кнопками ниже или введите /help для списка команд."
     )
     bot.send_text(chat_id=chat_id, text=welcome_text)
+    time.sleep(0.5)
     start_command_buttons(chat_id)
 
 def send_news(chat_id): #новости
+    time.sleep(0.3)
     bot.send_text(
         chat_id=chat_id,
         text=f"📢 Актуальные новости компании доступны в нашем Telegram-канале:\n\n{TELEGRAM_CHANNEL}",
@@ -54,9 +56,11 @@ def send_news(chat_id): #новости
             {"text": "📨 Перейти в Telegram", "url": TELEGRAM_CHANNEL, "style": "primary"}
         ]])
     )
+    time.sleep(0.5)
     start_command_buttons(chat_id)
 
 def send_about(chat_id): #информация о компании
+   time.sleep(0.3)
    about_text = (
         "🏢 Компания «105 Кодерлайн» работает в Российском центре программирования "
         "ОЭЗ ТВТ «Дубна» как представительство «Кодерлайн», партнер фирмы 1С, "
@@ -74,9 +78,11 @@ def send_about(chat_id): #информация о компании
             }
         ]])
     )
+   time.sleep(0.5)
    start_command_buttons(chat_id)
    
 def send_contacts(chat_id): #контактная информация
+   time.sleep(0.3)
    contacts_text = (
         "📞 Контактная информация:\n\n"
         "Здесь будет информация о контактах поддержки, отделах, "
@@ -94,6 +100,7 @@ def send_contacts(chat_id): #контактная информация
             }
         ]])
     )
+   time.sleep(0.5)
    start_command_buttons(chat_id)
 
 def send_1c_docs(chat_id): #доки 1с (заготовка)
@@ -132,7 +139,6 @@ def show_my_tickets(chat_id):
 
 def process_command(chat_id, command): #обрабатывает все команды
     command = command.lower().strip()
-    
     if command == "/start":
         send_welcome(chat_id)
     elif command == "/help":
@@ -173,13 +179,35 @@ def process_command(chat_id, command): #обрабатывает все кома
     else:
         bot.send_text(chat_id=chat_id, text="Неизвестная команда. Введите /help")
 
+def simulate_user_message(chat_id, text): #команда от пользователя
+    time.sleep(0.3)
+    bot.send_text(
+        chat_id=chat_id,
+        text=f"Вы выбрали команду: {text}"
+    )
+    time.sleep(0.3)
+    process_command(chat_id, text)
+
 def message_cb(bot, event): #обработчик сообщений
     process_command(event.from_chat, event.text)
 
 def button_cb(bot, event): #обработчки кнопок
-    if event.data['callbackData'].startswith('cmd_'):
-        command = event.data['callbackData'][4:]
-        process_command(event.from_chat, command)
+    try:
+        #Подтверждаем получение callback
+        bot.answer_callback_query(
+            query_id=event.data['queryId'],
+            text="⌛ Обработка..."
+        )
+        time.sleep(0.3)
+        if event.data['callbackData'].startswith('user_cmd_'):
+            command = event.data['callbackData'][9:]  # Убираем префикс user_cmd_
+            simulate_user_message(event.from_chat, command)   
+    except Exception as e:
+        print(f"Ошибка обработки кнопки: {e}")
+        bot.answer_callback_query(
+            query_id=event.data.get('queryId', ''),
+            text="❌ Ошибка обработки"
+        )
 
 # Регистрация обработчиков
 bot.dispatcher.add_handler(MessageHandler(callback=message_cb))
