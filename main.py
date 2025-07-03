@@ -180,7 +180,7 @@ def message_cb(bot, event):
             "🔹 1С материалы:\n"
             "/1c_docs - Документация и материалы по 1С\n"
             "/1c_reviews - Отзывы о наших внедрениях 1С\n\n"
-            "🔹 Поддержка:\n"
+            "🔹 Тикеты:\n"
             "/support - Создать новый тикет\n"
             "/my_tickets - Просмотреть мои тикеты\n"
             "/close_ticket - Закрыть тикет\n\n"
@@ -199,7 +199,7 @@ def message_cb(bot, event):
                 {"text": "О компании", "callbackData": "about_cmd"},
                 {"text": "Материалы 1С", "callbackData": "1c_docs_cmd"},
                 {"text": "Отзывы 1С", "callbackData": "1c_reviews_cmd"},
-                {"text": "Поддержка", "callbackData": "support_cmd"},
+                {"text": "Задачи", "callbackData": "support_cmd"},
                 {"text": "Мои тикеты", "callbackData": "my_tickets_cmd"}
             ]])
         )
