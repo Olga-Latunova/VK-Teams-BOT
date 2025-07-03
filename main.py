@@ -12,29 +12,58 @@ bot = Bot(token=TOKEN)
 # Состояния для обработки тикетов
 user_states = {}
 
-def send_news(bot, chat_id):
-    """Отправляет сообщение с ссылкой на Telegram-канал"""
+def start_command_buttons(chat_id): #сообщение с кнопками для действий
+    bot.send_text(
+        chat_id=chat_id,
+        text="Выберите действие ниже:",
+        inline_keyboard_markup=json.dumps([
+            [
+                {"text": "📞 Контакты", "callbackData": "cmd_/contacts", "style": "primary"},
+                {"text": "📰 Новости", "callbackData": "cmd_/news", "style": "primary"},
+                {"text": "🏢 О компании", "callbackData": "cmd_/about", "style": "primary"}
+            ],
+            [
+                {"text": "📚 1С Документы", "callbackData": "cmd_/1c_docs", "style": "primary"},
+                {"text": "⭐ 1С Отзывы", "callbackData": "cmd_/1c_reviews", "style": "primary"}
+            ],
+            [
+                {"text": "🛟 Поддержка", "callbackData": "cmd_/support", "style": "primary"},
+                {"text": "📋 Мои тикеты", "callbackData": "cmd_/my_tickets", "style": "primary"}
+            ]
+        ])
+    )
+
+def send_welcome(chat_id): #приветственное сообщение при /start
+    welcome_text = (
+        "👋 Добро пожаловать в бот компании «105 Кодерлайн»!\n\n"
+        "Я ваш виртуальный помощник. Вот что я могу:\n"
+        "• Предоставить информацию о компании\n"
+        "• Показать новости и обновления\n"
+        "• Помочь с документацией 1С\n"
+        "• Создать тикет в поддержку\n\n"
+        "Выберите действие кнопками ниже или введите /help для списка команд."
+    )
+    bot.send_text(chat_id=chat_id, text=welcome_text)
+    start_command_buttons(chat_id)
+
+def send_news(chat_id): #новости
     bot.send_text(
         chat_id=chat_id,
         text=f"📢 Актуальные новости компании доступны в нашем Telegram-канале:\n\n{TELEGRAM_CHANNEL}",
         inline_keyboard_markup=json.dumps([[
-            {
-                "text": "📨 Перейти в Telegram", 
-                "url": TELEGRAM_CHANNEL,
-                "style": "primary"
-            }
+            {"text": "📨 Перейти в Telegram", "url": TELEGRAM_CHANNEL, "style": "primary"}
         ]])
     )
+    start_command_buttons(chat_id)
 
-def send_about(bot, chat_id):
-    """Отправляет информацию о компании"""
-    about_text = (
+def send_about(chat_id): #информация о компании
+   about_text = (
         "🏢 Компания «105 Кодерлайн» работает в Российском центре программирования "
         "ОЭЗ ТВТ «Дубна» как представительство «Кодерлайн», партнер фирмы 1С, "
         "а также мы и резиденты особой экономической зоны технико-внедренческого типа «Дубна».\n\n"
         f"🌐 Подробнее: {COMPANY_SITE}"
     )
-    bot.send_text(
+   bot.send_text(
         chat_id=chat_id,
         text=about_text,
         inline_keyboard_markup=json.dumps([[
@@ -45,16 +74,16 @@ def send_about(bot, chat_id):
             }
         ]])
     )
-
-def send_contacts(bot, chat_id):
-    """Отправляет контактную информацию (заготовка)"""
-    contacts_text = (
+   start_command_buttons(chat_id)
+   
+def send_contacts(chat_id): #контактная информация
+   contacts_text = (
         "📞 Контактная информация:\n\n"
         "Здесь будет информация о контактах поддержки, отделах, "
         "добавочных номерах и почтах сотрудников.\n\n"
         "⚠️ Этот раздел находится в разработке"
     )
-    bot.send_text(
+   bot.send_text(
         chat_id=chat_id,
         text=contacts_text,
         inline_keyboard_markup=json.dumps([[
@@ -65,112 +94,48 @@ def send_contacts(bot, chat_id):
             }
         ]])
     )
+   start_command_buttons(chat_id)
 
-def send_1c_docs(bot, chat_id):
-    """Отправляет материалы по 1С (заготовка)"""
+def send_1c_docs(chat_id): #доки 1с (заготовка)
+    """Материалы по 1С"""
     docs_text = (
         "📚 Материалы по 1С:\n\n"
-        "Здесь будет список различных материалов, ссылки на сайты, "
-        "диск и документацию по 1С.\n\n"
-        "⚠️ Этот раздел находится в разработке"
+        "• Официальная документация: https://1c.ru\n"
+        "• Учебные материалы: https://learning.1c.ru\n"
+        "• Методические пособия: https://solutions.1c.ru"
     )
-    bot.send_text(
-        chat_id=chat_id,
-        text=docs_text,
-        inline_keyboard_markup=json.dumps([[
-            {
-                "text": "Официальный сайт 1С",
-                "url": "https://1c.ru",
-                "style": "primary"
-            },
-            {
-                "text": "Документация 1С",
-                "url": "https://1c.ru",
-                "style": "default"
-            }
-        ]])
-    )
+    bot.send_text(chat_id=chat_id, text=docs_text)
 
-def send_1c_reviews(bot, chat_id):
-    """Отправляет отзывы о внедрениях 1С (заготовка)"""
+def send_1c_reviews(chat_id): #отзывы 1с (заготовка)
+    """Отзывы о внедрениях 1С"""
     reviews_text = (
         "⭐ Отзывы о наших внедрениях 1С:\n\n"
-        "Здесь будут ссылки на отзывы клиентов о выполненных проектах "
-        "по внедрению и сопровождению 1С.\n\n"
-        "⚠️ Этот раздел находится в разработке"
+        "1. ООО «Ромашка» - внедрение 1С:ERP\n"
+        "2. АО «Василек» - переход с 1С 7.7 на 8.3\n"
+        "3. ИП Петров - автоматизация торговли"
     )
-    bot.send_text(
-        chat_id=chat_id,
-        text=reviews_text,
-        inline_keyboard_markup=json.dumps([[
-            {
-                "text": "Пример отзыва 1",
-                "url": COMPANY_SITE,
-                "style": "primary"
-            },
-            {
-                "text": "Пример отзыва 2",
-                "url": COMPANY_SITE,
-                "style": "default"
-            }
-        ]])
-    )
+    bot.send_text(chat_id=chat_id, text=reviews_text)
 
-def start_support_ticket(bot, chat_id):
-    """Начинает процесс создания тикета"""
+def start_support_ticket(chat_id):
+    """Начало создания тикета"""
     user_states[chat_id] = {"state": "awaiting_ticket_subject"}
-    bot.send_text(
-        chat_id=chat_id,
-        text="🛠 Создание тикета поддержки\n\nПожалуйста, укажите тему обращения:"
-    )
+    bot.send_text(chat_id=chat_id, text="🛠 Создание тикета\n\nУкажите тему обращения:")
 
-def show_my_tickets(bot, chat_id):
-    """Показывает открытые тикеты пользователя (заготовка)"""
+def show_my_tickets(chat_id):
+    """Показывает тикеты пользователя"""
     bot.send_text(
         chat_id=chat_id,
         text="📋 Ваши открытые тикеты:\n\n"
-             "1. #TKT-001 - Проблема с доступом (Создан: 01.01.2023)\n"
-             "2. #TKT-002 - Вопрос по 1С (Создан: 05.01.2023)\n\n"
-             "⚠️ Этот раздел находится в разработке"
+             "1. #TKT-001 - Проблема с доступом (в работе)\n"
+             "2. #TKT-002 - Вопрос по 1С (ожидает ответа)"
     )
 
-def close_ticket(bot, chat_id):
-    """Закрывает тикет (заготовка)"""
-    bot.send_text(
-        chat_id=chat_id,
-        text="🔒 Закрытие тикета\n\n"
-             "Пожалуйста, укажите номер тикета для закрытия:\n"
-             "(например: #TKT-001)\n\n"
-             "⚠️ Этот раздел находится в разработке"
-    )
-
-def show_stats(bot, chat_id):
-    """Показывает статистику использования бота (заготовка)"""
-    bot.send_text(
-        chat_id=chat_id,
-        text="📊 Статистика использования бота:\n\n"
-             "• Всего пользователей: 100\n"
-             "• Активных сессий: 42\n"
-             "• Обработано запросов: 1,234\n\n"
-             "⚠️ Этот раздел находится в разработке"
-    )
-
-def start_broadcast(bot, chat_id):
-    """Начинает процесс рассылки (заготовка)"""
-    bot.send_text(
-        chat_id=chat_id,
-        text="📢 Рассылка сообщений сотрудникам\n\n"
-             "Введите текст сообщения для рассылки:\n\n"
-             "⚠️ Только для администраторов\n"
-             "⚠️ Этот раздел находится в разработке"
-    )
-
-def message_cb(bot, event):
-    text = event.text.lower().strip()
-    chat_id = event.from_chat
+def process_command(chat_id, command): #обрабатывает все команды
+    command = command.lower().strip()
     
-    if text == "/help":
-        # Полный список команд с описанием
+    if command == "/start":
+        send_welcome(chat_id)
+    elif command == "/help":
         help_text = (
             "📋 Список всех доступных команд:\n\n"
             "🔹 Основные команды:\n"
@@ -187,137 +152,40 @@ def message_cb(bot, event):
             "🔹 Администрирование:\n"
             "/stats - Статистика использования бота\n"
             "/broadcast - Рассылка сообщений (админы)\n\n"
-            "Выберите действие ниже или введите команду вручную:"
+            "Воспользуйтесь кнопками или введите команду вручную"
         )
-        
-        bot.send_text(
-            chat_id=chat_id,
-            text=help_text,
-            inline_keyboard_markup=json.dumps([[
-                {"text": "Контакты", "callbackData": "contacts_cmd"},
-                {"text": "Новости", "callbackData": "news_cmd"},
-                {"text": "О компании", "callbackData": "about_cmd"},
-                {"text": "Материалы 1С", "callbackData": "1c_docs_cmd"},
-                {"text": "Отзывы 1С", "callbackData": "1c_reviews_cmd"},
-                {"text": "Поддержка", "callbackData": "support_cmd"},
-                {"text": "Мои тикеты", "callbackData": "my_tickets_cmd"}
-            ]])
-        )
-    elif text == "/news":
-        send_news(bot, chat_id)
-    elif text == "/about":
-        send_about(bot, chat_id)
-    elif text == "/contacts":
-        send_contacts(bot, chat_id)
-    elif text == "/1c_docs":
-        send_1c_docs(bot, chat_id)
-    elif text == "/1c_reviews":
-        send_1c_reviews(bot, chat_id)
-    elif text == "/support":
-        start_support_ticket(bot, chat_id)
-    elif text == "/my_tickets":
-        show_my_tickets(bot, chat_id)
-    elif text == "/close_ticket":
-        close_ticket(bot, chat_id)
-    elif text == "/stats":
-        show_stats(bot, chat_id)
-    elif text == "/broadcast":
-        start_broadcast(bot, chat_id)
+        bot.send_text(chat_id=chat_id, text=help_text)
+        start_command_buttons(chat_id)
+    elif command == "/news":
+        send_news(chat_id)
+    elif command == "/about":
+        send_about(chat_id)
+    elif command == "/contacts":
+        send_contacts(chat_id)
+    elif command == "/1c_docs":
+        send_1c_docs(chat_id)
+    elif command == "/1c_reviews":
+        send_1c_reviews(chat_id)
+    elif command == "/support":
+        start_support_ticket(chat_id)
+    elif command == "/my_tickets":
+        show_my_tickets(chat_id)
     else:
-        # Обработка состояний для создания тикета
-        if chat_id in user_states:
-            state = user_states[chat_id]["state"]
-            if state == "awaiting_ticket_subject":
-                user_states[chat_id] = {
-                    "state": "awaiting_ticket_description",
-                    "subject": text
-                }
-                bot.send_text(
-                    chat_id=chat_id,
-                    text="📝 Теперь опишите вашу проблему максимально подробно:"
-                )
-            elif state == "awaiting_ticket_description":
-                user_states[chat_id] = {
-                    "state": "awaiting_ticket_priority",
-                    "description": text
-                }
-                bot.send_text(
-                    chat_id=chat_id,
-                    text="⚡ Укажите срочность:\n\n"
-                         "1 - Критическая (система не работает)\n"
-                         "2 - Высокая (мешает работе)\n"
-                         "3 - Средняя (можно подождать)\n"
-                         "4 - Низкая (вопрос/предложение)"
-                )
-            elif state == "awaiting_ticket_priority":
-                if text in ["1", "2", "3", "4"]:
-                    priority = {
-                        "1": "Критическая",
-                        "2": "Высокая",
-                        "3": "Средняя",
-                        "4": "Низкая"
-                    }[text]
-                    
-                    # Здесь будет сохранение тикета в БД
-                    ticket_id = "TKT-123"  # Заглушка
-                    
-                    bot.send_text(
-                        chat_id=chat_id,
-                        text=f"✅ Тикет #{ticket_id} создан!\n\n"
-                             f"Тема: {user_states[chat_id]['subject']}\n"
-                             f"Срочность: {priority}\n\n"
-                             "С вами свяжутся в ближайшее время."
-                    )
-                    del user_states[chat_id]
-                else:
-                    bot.send_text(
-                        chat_id=chat_id,
-                        text="❌ Пожалуйста, укажите срочность цифрой от 1 до 4"
-                    )
-        else:
-            bot.send_text(
-                chat_id=chat_id,
-                text="Напишите /help для вывода меню"
-            )
+        bot.send_text(chat_id=chat_id, text="Неизвестная команда. Введите /help")
 
-# Обработчики кнопок
-def button_news_cb(bot, event):
-    if event.data['callbackData'] == "news_cmd":
-        send_news(bot, event.from_chat)
+def message_cb(bot, event): #обработчик сообщений
+    process_command(event.from_chat, event.text)
 
-def button_about_cb(bot, event):
-    if event.data['callbackData'] == "about_cmd":
-        send_about(bot, event.from_chat)
-
-def button_contacts_cb(bot, event):
-    if event.data['callbackData'] == "contacts_cmd":
-        send_contacts(bot, event.from_chat)
-
-def button_1c_docs_cb(bot, event):
-    if event.data['callbackData'] == "1c_docs_cmd":
-        send_1c_docs(bot, event.from_chat)
-
-def button_1c_reviews_cb(bot, event):
-    if event.data['callbackData'] == "1c_reviews_cmd":
-        send_1c_reviews(bot, event.from_chat)
-
-def button_support_cb(bot, event):
-    if event.data['callbackData'] == "support_cmd":
-        start_support_ticket(bot, event.from_chat)
-
-def button_my_tickets_cb(bot, event):
-    if event.data['callbackData'] == "my_tickets_cmd":
-        show_my_tickets(bot, event.from_chat)
+def button_cb(bot, event): #обработчки кнопок
+    if event.data['callbackData'].startswith('cmd_'):
+        command = event.data['callbackData'][4:]
+        process_command(event.from_chat, command)
 
 # Регистрация обработчиков
 bot.dispatcher.add_handler(MessageHandler(callback=message_cb))
-bot.dispatcher.add_handler(BotButtonCommandHandler(callback=button_news_cb))
-bot.dispatcher.add_handler(BotButtonCommandHandler(callback=button_about_cb))
-bot.dispatcher.add_handler(BotButtonCommandHandler(callback=button_contacts_cb))
-bot.dispatcher.add_handler(BotButtonCommandHandler(callback=button_1c_docs_cb))
-bot.dispatcher.add_handler(BotButtonCommandHandler(callback=button_1c_reviews_cb))
-bot.dispatcher.add_handler(BotButtonCommandHandler(callback=button_support_cb))
-bot.dispatcher.add_handler(BotButtonCommandHandler(callback=button_my_tickets_cb))
+bot.dispatcher.add_handler(BotButtonCommandHandler(callback=button_cb))
 
+# Запуск бота
+print("Бот запущен...")
 bot.start_polling()
 bot.idle()
