@@ -239,23 +239,59 @@ def process_ticket_creation(chat_id, message_text):
 
 
 def show_my_tickets(chat_id):
-    """Показывает тикеты пользователя"""
+    """Показывает тикеты пользователя с возможностью закрытия"""
     if chat_id not in tickets or not tickets[chat_id]:
         bot.send_text(chat_id=chat_id, text="У вас нет активных тикетов.")
         return
-    
-    tickets_text = "📋 Ваши открытые тикеты:\n\n"
-    for i, ticket in enumerate(tickets[chat_id], 1):
-        tickets_text += (
-            f"{i}. #{ticket['id']}\n"
-            f"   Тема: {ticket['subject']}\n"
-            f"   Дедлайн: {ticket['deadline']}\n"
-            f"   Статус: {ticket['status']}\n\n"
-        )
-    
-    bot.send_text(chat_id=chat_id, text=tickets_text, inline_keyboard_markup=json.dumps([[
-        {"text": "❌ Назад", "callbackData": "user_cmd_/back", "style": "secondary"}
-    ]]))
+
+    keyboard = []
+    for ticket in tickets[chat_id]:
+        ticket_id = ticket["id"]
+        subject = ticket["subject"]
+        status = ticket["status"]
+        deadline = ticket["deadline"]
+
+        row = [{
+            "text": f"{ticket_id} - {subject} ({status}, до {deadline})",
+            "callbackData": f"user_cmd_/view_ticket_{ticket_id}"
+        }]
+        if status == "Открыт":
+            row.append({
+                "text": "❌ Закрыть",
+                "callbackData": f"user_cmd_/confirm_close_ticket_{ticket_id}"
+            })
+        keyboard.append(row)
+
+    bot.send_text(
+        chat_id=chat_id,
+        text="📋 Ваши открытые тикеты:",
+        inline_keyboard_markup=json.dumps(keyboard)
+    )
+
+def close_ticket(chat_id):
+    """Выводит список тикетов для закрытия"""
+    if chat_id not in tickets or not tickets[chat_id]:
+        bot.send_text(chat_id=chat_id, text="❌ У вас нет активных тикетов.")
+        return
+
+    keyboard = []
+    for ticket in tickets[chat_id]:
+        if ticket["status"] == "Открыт":
+            ticket_id = ticket["id"]
+            keyboard.append([{
+                "text": f"❌ Закрыть #{ticket_id}",
+                "callbackData": f"user_cmd_/confirm_close_ticket_{ticket_id}"
+            }])
+
+    if not keyboard:
+        bot.send_text(chat_id=chat_id, text="❌ Нет тикетов для закрытия.")
+        return
+
+    bot.send_text(
+        chat_id=chat_id,
+        text="🗑 Выберите тикет для закрытия:",
+        inline_keyboard_markup=json.dumps(keyboard)
+    )
 
 def start_create_event(chat_id):
     """Начало создания события"""
@@ -527,6 +563,8 @@ def process_command(chat_id, command):  # обрабатывает все ком
         start_support_ticket(chat_id)
     elif command == "/my_tickets":
         show_my_tickets(chat_id)
+    elif command == "/close_ticket":
+        close_ticket(chat_id)
     elif command == "/create_event":
         start_create_event(chat_id)
     elif command == "/my_events":
@@ -572,10 +610,54 @@ def button_cb(bot, event):
             text="⌛ Обработка..."
         )
         time.sleep(0.3)
+
         if event.data['callbackData'].startswith('user_cmd_'):
-            command = event.data['callbackData'][9:]  # Убираем префикс user_cmd_
             chat_id = event.from_chat
-            process_command(chat_id, command)
+            callback_data = event.data['callbackData'][9:]  # Убираем префикс user_cmd_
+
+            # 🔒 Обработка закрытия тикета
+            if callback_data.startswith("confirm_close_ticket_"):
+                ticket_id = callback_data.replace("confirm_close_ticket_", "")
+                ticket_found = False
+
+                for idx, ticket in enumerate(tickets.get(chat_id, [])):
+                    if ticket["id"] == ticket_id and ticket["status"] == "Открыт":
+                        ticket["status"] = "Закрыт"
+                        ticket["closed_at"] = datetime.now(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
+                        bot.send_text(chat_id=chat_id, text=f"✅ Тикет #{ticket_id} успешно закрыт.")
+                        ticket_found = True
+                        break
+
+                if not ticket_found:
+                    bot.send_text(chat_id=chat_id, text="❌ Не удалось найти открытый тикет.")
+
+                show_my_tickets(chat_id)
+
+            # ℹ Просмотр информации о тикете
+            elif callback_data.startswith("view_ticket_"):
+                ticket_id = callback_data.replace("view_ticket_", "")
+                found = False
+                for ticket in tickets.get(chat_id, []):
+                    if ticket["id"] == ticket_id:
+                        info = (
+                            f"🔹 Номер: {ticket['id']}\n"
+                            f"🔹 Тема: {ticket['subject']}\n"
+                            f"🔹 Описание: {ticket['description']}\n"
+                            f"🔹 Дедлайн: {ticket['deadline']}\n"
+                            f"🔹 Статус: {ticket['status']}\n"
+                            f"🔹 Создан: {ticket['created_at']}\n"
+                            f"🔹 Закрыт: {ticket.get('closed_at', '—')}"
+                        )
+                        bot.send_text(chat_id=chat_id, text=f"ℹ️ Информация о тикете:\n\n{info}")
+                        found = True
+                        break
+                if not found:
+                    bot.send_text(chat_id=chat_id, text="❌ Тикет не найден.")
+
+            # 🔄 Все остальные команды обрабатываются через process_command
+            else:
+                process_command(chat_id, callback_data)
+
     except Exception as e:
         print(f"Ошибка обработки кнопки: {e}")
         bot.answer_callback_query(
