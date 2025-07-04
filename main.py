@@ -47,8 +47,12 @@ def start_command_buttons(chat_id):  # Главное меню
                 {"text": "⭐ 1С Отзывы", "callbackData": "user_cmd_/1c_reviews", "style": "primary"}
             ],
             [
-                {"text": "🛟 Поддержка", "callbackData": "user_cmd_/support", "style": "primary"},
+                {"text": "🛟 Создать тикет", "callbackData": "user_cmd_/support", "style": "primary"},
                 {"text": "📋 Мои тикеты", "callbackData": "user_cmd_/my_tickets", "style": "primary"}
+            ],
+            [
+                {"text": "🗓 Создать событие", "callbackData": "user_cmd_/create_event", "style": "primary"},
+                {"text": "🗓 Мои события", "callbackData": "user_cmd_/my_events", "style": "primary"}
             ]
         ]),
     )
