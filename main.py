@@ -180,14 +180,20 @@ def process_ticket_creation(chat_id, message_text):
     if user_states.get(chat_id, {}).get("state") == "awaiting_ticket_subject":
         user_states[chat_id]["ticket_data"]["subject"] = message_text
         user_states[chat_id]["state"] = "awaiting_ticket_description"
-        bot.send_text(chat_id=chat_id, text="📝 Теперь опишите проблему подробно:")
+        bot.send_text(chat_id=chat_id, text="📝 Теперь опишите проблему подробно:",inline_keyboard_markup=json.dumps([[
+                {"text": "⬅️ Назад", "callbackData": "user_cmd_/back_in_ticket"},
+                {"text": "❌ Отмена", "callbackData": "user_cmd_/cancel"}
+            ]]))
     
     elif user_states.get(chat_id, {}).get("state") == "awaiting_ticket_description":
         user_states[chat_id]["ticket_data"]["description"] = message_text
         user_states[chat_id]["state"] = "awaiting_ticket_deadline"
         bot.send_text(
             chat_id=chat_id,
-            text="⏰ Укажите дедлайн для задачи (в формате ДД.ММ.ГГГГ, например 31.12.2023):"
+            text="⏰ Укажите дедлайн для задачи (в формате ДД.ММ.ГГГГ, например 31.12.2023):", inline_keyboard_markup=json.dumps([[
+                {"text": "⬅️ Назад", "callbackData": "user_cmd_/back_in_ticket"},
+                {"text": "❌ Отмена", "callbackData": "user_cmd_/cancel"}
+            ]])
         )
     
     elif user_states.get(chat_id, {}).get("state") == "awaiting_ticket_deadline":
@@ -219,8 +225,8 @@ def process_ticket_creation(chat_id, message_text):
             )
             
             bot.send_text(chat_id=chat_id, text=ticket_info, inline_keyboard_markup=json.dumps([[
-        {"text": "❌ Назад", "callbackData": "user_cmd_/back", "style": "secondary"}
-    ]]))
+        {"text": "⬅️ В главное меню", "callbackData": "user_cmd_/back", "style": "secondary"}
+    ]]) )
             user_states.pop(chat_id, None)  # Удаляем состояние
             time.sleep(0.5)
             
@@ -255,29 +261,80 @@ def start_create_event(chat_id):
     """Начало создания события"""
     user_states[chat_id] = {
         "state": "awaiting_event_name",
-        "event_data": {}  # Будем хранить данные события здесь
+        "event_data": {}
     }
-    bot.send_text(chat_id=chat_id, text="🗓 Создание события\n\nУкажите название события:",inline_keyboard_markup=json.dumps([[
-        {"text": "❌ Назад", "callbackData": "user_cmd_/back", "style": "secondary"}
-    ]]))
+    bot.send_text(
+        chat_id=chat_id,
+        text="🗓 Создание события\n\nУкажите название события:",
+        inline_keyboard_markup=json.dumps([[
+            {"text": "❌ Отмена", "callbackData": "user_cmd_/cancel"},
+            {"text": "⬅️ Назад", "callbackData": "user_cmd_/back_in_event"}
+        ]])
+    )
+
+def go_back_in_event(chat_id):
+    if chat_id in user_states:
+        state_info = user_states[chat_id]
+        state = state_info["state"]
+
+        if state == "awaiting_event_description":
+            name = state_info["event_data"].get("name", "")
+            bot.send_text(chat_id=chat_id, text=f"🗓 Измените название события:\n(было: {name})")
+            state_info["state"] = "awaiting_event_name"
+
+        elif state == "awaiting_event_datetime":
+            name = state_info["event_data"].get("name", "")
+            description = state_info["event_data"].get("description", "")
+            bot.send_text(
+                chat_id=chat_id,
+                text=f"🗓 Название: {name}\n📝 Описание: {description}\n\nИзмените описание события:",
+                inline_keyboard_markup=json.dumps([[
+                    {"text": "⬅️ Назад", "callbackData": "user_cmd_/back_in_event"},
+                    {"text": "❌ Отмена", "callbackData": "user_cmd_/cancel"}
+                ]])
+            )
+            state_info["state"] = "awaiting_event_description"
+
+        else:
+            # Если нечего откатывать, просто выводим меню
+            bot.send_text(chat_id=chat_id, text="⬅️ Вы вернулись в главное меню.")
+            start_command_buttons(chat_id)
+
+    else:
+        # Обычный возврат из других разделов
+        current_context = user_context.get(chat_id)
+        if current_context:
+            del user_context[chat_id]
+            bot.send_text(chat_id=chat_id, text="⬅️ Вы вернулись в главное меню.")
+            start_command_buttons(chat_id)
+        else:
+            start_command_buttons(chat_id)
 
 def process_event_creation(chat_id, message_text):
     """Обработка шагов создания события"""
     if user_states.get(chat_id, {}).get("state") == "awaiting_event_name":
         user_states[chat_id]["event_data"]["name"] = message_text
         user_states[chat_id]["state"] = "awaiting_event_description"
-        bot.send_text(chat_id=chat_id, text="📝 Теперь опишите событие подробно:", inline_keyboard_markup=json.dumps([[
-        {"text": "❌ Назад", "callbackData": "user_cmd_/back", "style": "secondary"}
-    ]]))
+        bot.send_text(
+            chat_id=chat_id,
+            text="📝 Теперь опишите событие подробно:",
+            inline_keyboard_markup=json.dumps([[
+                {"text": "⬅️ Назад", "callbackData": "user_cmd_/back_in_event"},
+                {"text": "❌ Отмена", "callbackData": "user_cmd_/cancel"}
+            ]])
+        )
     
     elif user_states.get(chat_id, {}).get("state") == "awaiting_event_description":
         user_states[chat_id]["event_data"]["description"] = message_text
         user_states[chat_id]["state"] = "awaiting_event_datetime"
         bot.send_text(
             chat_id=chat_id,
-            text="⏰ Укажите дату и время события (в формате ДД.ММ.ГГГГ ЧЧ:ММ, например 31.12.2023 14:30):", inline_keyboard_markup=json.dumps([[
-        {"text": "❌ Назад", "callbackData": "user_cmd_/back", "style": "secondary"}
-    ]]))
+            text="⏰ Укажите дату и время события (в формате ДД.ММ.ГГГГ ЧЧ:ММ):",
+            inline_keyboard_markup=json.dumps([[
+                {"text": "⬅️ Назад", "callbackData": "user_cmd_/back_in_event"},
+                {"text": "❌ Отмена", "callbackData": "user_cmd_/cancel"}
+            ]])
+        )
     
     elif user_states.get(chat_id, {}).get("state") == "awaiting_event_datetime":
         try:
@@ -311,9 +368,7 @@ def process_event_creation(chat_id, message_text):
                 f"Я напомню вам за 10 минут до начала!"
             )
             
-            bot.send_text(chat_id=chat_id, text=event_info, inline_keyboard_markup=json.dumps([[
-        {"text": "❌ Назад", "callbackData": "user_cmd_/back", "style": "secondary"}
-    ]]))
+            bot.send_text(chat_id=chat_id, text=event_info)
             user_states.pop(chat_id, None)  # Удаляем состояние
             
             # Запускаем напоминание
@@ -388,7 +443,12 @@ def show_help(chat_id):
         "🔹 Поддержка:\n"
         "/support - Создать новый тикет\n"
         "/my_tickets - Просмотреть мои тикеты\n"
+        "/back_in_tickets - Вернуться назад (в окне тикетов)\n"
         "/close_ticket - Закрыть тикет\n\n"
+        "🔹 События:\n"
+        "/create_event - Создать новое событие\n"
+        "/my_events - Посмотреть мои события\n"
+        "/back_in_event - Вернуться назад (в окне событий)\n\n"
         "🔹 Администрирование:\n"
         "/stats - Статистика использования бота\n"
         "/broadcast - Рассылка сообщений (админы)\n\n"
@@ -410,24 +470,36 @@ def cancel_current_dialog(chat_id):
 def go_back(chat_id):
     if chat_id in user_states:
         state_info = user_states[chat_id]
+        state = state_info["state"]
 
-        if state_info["state"] == "awaiting_ticket_description":
-            # Возвращаемся к теме обращения
+        # Возвращаемся к предыдущему шагу
+        if state == "awaiting_ticket_description":
             bot.send_text(chat_id=chat_id, text="🛠 Измените тему обращения:")
             state_info["state"] = "awaiting_ticket_subject"
+
+        elif state == "awaiting_ticket_deadline":
+            subject = state_info["ticket_data"].get("subject", "")
+            description = state_info["ticket_data"].get("description", "")
+
+            bot.send_text(
+                chat_id=chat_id,
+                text=f"🛠 Тема: {subject}\n📝 Описание: {description}\n\nИзмените описание обращения:"
+            )
+            state_info["state"] = "awaiting_ticket_description"
+
         else:
             # Если нечего откатывать, просто выводим меню
-            bot.send_text(chat_id=chat_id, text="⬅️ Вы вернулись на шаг назад.")
+            bot.send_text(chat_id=chat_id, text="⬅️ Вы вернулись в главное меню.")
             start_command_buttons(chat_id)
+
     else:
-        # Проверяем, был ли пользователь в каком-то окне
+        # Обычный возврат из других разделов
         current_context = user_context.get(chat_id)
         if current_context:
             del user_context[chat_id]
             bot.send_text(chat_id=chat_id, text="⬅️ Вы вернулись в главное меню.")
             start_command_buttons(chat_id)
         else:
-            # Уже в главном меню — не выводим предупреждение
             start_command_buttons(chat_id)
 
 
@@ -459,6 +531,15 @@ def process_command(chat_id, command):  # обрабатывает все ком
         start_create_event(chat_id)
     elif command == "/my_events":
         show_my_events(chat_id)
+    elif command == "/back":
+        go_back(chat_id)
+    elif command == "/back_in_ticket":
+        if chat_id in user_states:
+            go_back(chat_id)
+        else:
+            start_command_buttons(chat_id)
+    elif command == "/back_in_event":
+        go_back_in_event(chat_id)
     else:
         bot.send_text(chat_id=chat_id, text="Неизвестная команда. Введите /help")
 
@@ -484,9 +565,8 @@ def message_cb(bot, event): #обработчик сообщений
         process_command(event.from_chat, event.text)
 
 
-def button_cb(bot, event): #обработчки кнопок
+def button_cb(bot, event):
     try:
-        #Подтверждаем получение callback
         bot.answer_callback_query(
             query_id=event.data['queryId'],
             text="⌛ Обработка..."
@@ -494,7 +574,8 @@ def button_cb(bot, event): #обработчки кнопок
         time.sleep(0.3)
         if event.data['callbackData'].startswith('user_cmd_'):
             command = event.data['callbackData'][9:]  # Убираем префикс user_cmd_
-            simulate_user_message(event.from_chat, command)   
+            chat_id = event.from_chat
+            process_command(chat_id, command)
     except Exception as e:
         print(f"Ошибка обработки кнопки: {e}")
         bot.answer_callback_query(
