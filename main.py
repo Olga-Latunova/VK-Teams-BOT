@@ -4,10 +4,14 @@ from bot.handler import MessageHandler, BotButtonCommandHandler
 import time
 from datetime import datetime, timedelta
 import threading
+import pytz  # Импортируем библиотеку для работы с часовыми поясами
 
 TOKEN = "001.1806729577.0340071044:1011814127"  # ваш токен
 TELEGRAM_CHANNEL = "https://t.me/IT_105Koderline"  # Ссылка на канал
 COMPANY_SITE = "https://105.ooo"  # Сайт компании
+
+# Устанавливаем московский часовой пояс
+MOSCOW_TZ = pytz.timezone('Europe/Moscow')
 
 bot = Bot(token=TOKEN)
 
@@ -33,6 +37,9 @@ def start_command_buttons(chat_id): #сообщение с кнопками дл
             [
                 {"text": "🛟 Поддержка", "callbackData": "user_cmd_/support", "style": "primary"},
                 {"text": "📋 Мои тикеты", "callbackData": "user_cmd_/my_tickets", "style": "primary"},
+                {"text": "🗓 Мои события", "callbackData": "user_cmd_/my_events", "style": "primary"}
+            ],
+            [
                 {"text": "🗓 Создать событие", "callbackData": "user_cmd_/create_event", "style": "primary"}
             ]
         ])
@@ -165,7 +172,7 @@ def process_ticket_creation(chat_id, message_text):
             ticket_data = user_states[chat_id]["ticket_data"]
             ticket_data["id"] = ticket_id
             ticket_data["status"] = "Открыт"
-            ticket_data["created_at"] = datetime.now().strftime("%d.%m.%Y %H:%M")
+            ticket_data["created_at"] = datetime.now(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
             
             tickets[chat_id].append(ticket_data)
             
@@ -233,7 +240,10 @@ def process_event_creation(chat_id, message_text):
     
     elif user_states.get(chat_id, {}).get("state") == "awaiting_event_datetime":
         try:
-            event_datetime = datetime.strptime(message_text, "%d.%m.%Y %H:%M")
+            # Преобразуем введенное время с учетом московского часового пояса
+            naive_datetime = datetime.strptime(message_text, "%d.%m.%Y %H:%M")
+            event_datetime = MOSCOW_TZ.localize(naive_datetime)
+            
             user_states[chat_id]["event_data"]["datetime"] = event_datetime
             
             # Сохраняем событие
@@ -244,7 +254,7 @@ def process_event_creation(chat_id, message_text):
             event_data = user_states[chat_id]["event_data"]
             event_data["id"] = event_id
             event_data["status"] = "Запланировано"
-            event_data["created_at"] = datetime.now().strftime("%d.%m.%Y %H:%M")
+            event_data["created_at"] = datetime.now(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
             
             events[chat_id].append(event_data)
             
@@ -282,7 +292,7 @@ def process_event_creation(chat_id, message_text):
 
 def schedule_reminder(chat_id, event_id, event_name, reminder_time):
     """Запланировать напоминание о событии"""
-    now = datetime.now()
+    now = datetime.now(MOSCOW_TZ)
     delay = (reminder_time - now).total_seconds()
     
     if delay > 0:
@@ -303,10 +313,12 @@ def show_my_events(chat_id):
     
     events_text = "🗓 Ваши предстоящие события:\n\n"
     for i, event in enumerate(events[chat_id], 1):
+        # Форматируем время с учетом часового пояса
+        event_time = event['datetime'].astimezone(MOSCOW_TZ)
         events_text += (
             f"{i}. #{event['id']}\n"
             f"   Название: {event['name']}\n"
-            f"   Время: {event['datetime'].strftime('%d.%m.%Y %H:%M')}\n"
+            f"   Время: {event_time.strftime('%d.%m.%Y %H:%M')}\n"
             f"   Статус: {event['status']}\n\n"
         )
     
