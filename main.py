@@ -2,7 +2,8 @@ import json
 from bot.bot import Bot
 from bot.handler import MessageHandler, BotButtonCommandHandler
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
+import threading
 
 TOKEN = "001.1806729577.0340071044:1011814127"  # ваш токен
 TELEGRAM_CHANNEL = "https://t.me/IT_105Koderline"  # Ссылка на канал
@@ -10,9 +11,10 @@ COMPANY_SITE = "https://105.ooo"  # Сайт компании
 
 bot = Bot(token=TOKEN)
 
-# Состояния для обработки тикетов
+# Состояния для обработки тикетов и событий
 user_states = {}
 tickets = {}  # Хранение созданных тикетов {chat_id: [список тикетов]}
+events = {}   # Хранение созданных событий {chat_id: [список событий]}
 
 def start_command_buttons(chat_id): #сообщение с кнопками для действий
    bot.send_text(
@@ -30,7 +32,8 @@ def start_command_buttons(chat_id): #сообщение с кнопками дл
             ],
             [
                 {"text": "🛟 Поддержка", "callbackData": "user_cmd_/support", "style": "primary"},
-                {"text": "📋 Мои тикеты", "callbackData": "user_cmd_/my_tickets", "style": "primary"}
+                {"text": "📋 Мои тикеты", "callbackData": "user_cmd_/my_tickets", "style": "primary"},
+                {"text": "🗓 Создать событие", "callbackData": "user_cmd_/create_event", "style": "primary"}
             ]
         ])
     )
@@ -42,7 +45,8 @@ def send_welcome(chat_id): #приветственное сообщение пр
         "• Предоставить информацию о компании\n"
         "• Показать новости и обновления\n"
         "• Помочь с документацией 1С\n"
-        "• Создать тикет в поддержку\n\n"
+        "• Создать тикет в поддержку\n"
+        "• Создать событие с напоминанием\n\n"
         "Выберите действие кнопками ниже или введите /help для списка команд."
     )
     bot.send_text(chat_id=chat_id, text=welcome_text)
@@ -204,6 +208,110 @@ def show_my_tickets(chat_id):
     
     bot.send_text(chat_id=chat_id, text=tickets_text)
 
+def start_create_event(chat_id):
+    """Начало создания события"""
+    user_states[chat_id] = {
+        "state": "awaiting_event_name",
+        "event_data": {}  # Будем хранить данные события здесь
+    }
+    bot.send_text(chat_id=chat_id, text="🗓 Создание события\n\nУкажите название события:")
+
+def process_event_creation(chat_id, message_text):
+    """Обработка шагов создания события"""
+    if user_states.get(chat_id, {}).get("state") == "awaiting_event_name":
+        user_states[chat_id]["event_data"]["name"] = message_text
+        user_states[chat_id]["state"] = "awaiting_event_description"
+        bot.send_text(chat_id=chat_id, text="📝 Теперь опишите событие подробно:")
+    
+    elif user_states.get(chat_id, {}).get("state") == "awaiting_event_description":
+        user_states[chat_id]["event_data"]["description"] = message_text
+        user_states[chat_id]["state"] = "awaiting_event_datetime"
+        bot.send_text(
+            chat_id=chat_id,
+            text="⏰ Укажите дату и время события (в формате ДД.ММ.ГГГГ ЧЧ:ММ, например 31.12.2023 14:30):"
+        )
+    
+    elif user_states.get(chat_id, {}).get("state") == "awaiting_event_datetime":
+        try:
+            event_datetime = datetime.strptime(message_text, "%d.%m.%Y %H:%M")
+            user_states[chat_id]["event_data"]["datetime"] = event_datetime
+            
+            # Сохраняем событие
+            if chat_id not in events:
+                events[chat_id] = []
+            
+            event_id = f"EVT-{len(events[chat_id])+1:03d}"
+            event_data = user_states[chat_id]["event_data"]
+            event_data["id"] = event_id
+            event_data["status"] = "Запланировано"
+            event_data["created_at"] = datetime.now().strftime("%d.%m.%Y %H:%M")
+            
+            events[chat_id].append(event_data)
+            
+            # Формируем сообщение с информацией о событии
+            event_info = (
+                f"✅ Событие создано!\n\n"
+                f"🔹 Номер: {event_id}\n"
+                f"🔹 Название: {event_data['name']}\n"
+                f"🔹 Описание: {event_data['description']}\n"
+                f"🔹 Дата и время: {event_datetime.strftime('%d.%m.%Y %H:%M')}\n"
+                f"🔹 Статус: {event_data['status']}\n"
+                f"🔹 Создано: {event_data['created_at']}\n\n"
+                f"Я напомню вам за 10 минут до начала!"
+            )
+            
+            bot.send_text(chat_id=chat_id, text=event_info)
+            user_states.pop(chat_id, None)  # Удаляем состояние
+            
+            # Запускаем напоминание
+            reminder_time = event_datetime - timedelta(minutes=10)
+            threading.Thread(
+                target=schedule_reminder,
+                args=(chat_id, event_id, event_data['name'], reminder_time),
+                daemon=True
+            ).start()
+            
+            time.sleep(0.5)
+            start_command_buttons(chat_id)
+            
+        except ValueError:
+            bot.send_text(
+                chat_id=chat_id,
+                text="❌ Неверный формат даты и времени. Пожалуйста, укажите в формате ДД.ММ.ГГГГ ЧЧ:ММ:"
+            )
+
+def schedule_reminder(chat_id, event_id, event_name, reminder_time):
+    """Запланировать напоминание о событии"""
+    now = datetime.now()
+    delay = (reminder_time - now).total_seconds()
+    
+    if delay > 0:
+        time.sleep(delay)
+        bot.send_text(
+            chat_id=chat_id,
+            text=f"🔔 Напоминание о событии!\n\n"
+                 f"Через 10 минут начинается:\n"
+                 f"*{event_name}*\n\n"
+                 f"ID события: {event_id}"
+        )
+
+def show_my_events(chat_id):
+    """Показывает события пользователя"""
+    if chat_id not in events or not events[chat_id]:
+        bot.send_text(chat_id=chat_id, text="У вас нет запланированных событий.")
+        return
+    
+    events_text = "🗓 Ваши предстоящие события:\n\n"
+    for i, event in enumerate(events[chat_id], 1):
+        events_text += (
+            f"{i}. #{event['id']}\n"
+            f"   Название: {event['name']}\n"
+            f"   Время: {event['datetime'].strftime('%d.%m.%Y %H:%M')}\n"
+            f"   Статус: {event['status']}\n\n"
+        )
+    
+    bot.send_text(chat_id=chat_id, text=events_text)
+
 def process_command(chat_id, command): #обрабатывает все команды
     command = command.lower().strip()
     if command == "/start":
@@ -222,6 +330,9 @@ def process_command(chat_id, command): #обрабатывает все кома
             "/support - Создать новый тикет\n"
             "/my_tickets - Просмотреть мои тикеты\n"
             "/close_ticket - Закрыть тикет\n\n"
+            "🔹 События:\n"
+            "/create_event - Создать новое событие\n"
+            "/my_events - Просмотреть мои события\n\n"
             "🔹 Администрирование:\n"
             "/stats - Статистика использования бота\n"
             "/broadcast - Рассылка сообщений (админы)\n\n"
@@ -243,6 +354,10 @@ def process_command(chat_id, command): #обрабатывает все кома
         start_support_ticket(chat_id)
     elif command == "/my_tickets":
         show_my_tickets(chat_id)
+    elif command == "/create_event":
+        start_create_event(chat_id)
+    elif command == "/my_events":
+        show_my_events(chat_id)
     else:
         bot.send_text(chat_id=chat_id, text="Неизвестная команда. Введите /help")
 
@@ -256,9 +371,12 @@ def simulate_user_message(chat_id, text): #команда от пользова�
     process_command(chat_id, text)
 
 def message_cb(bot, event): #обработчик сообщений
-    # Проверяем, находится ли пользователь в процессе создания тикета
-    if user_states.get(event.from_chat, {}).get("state", "").startswith("awaiting_ticket"):
+    # Проверяем, находится ли пользователь в процессе создания тикета или события
+    state = user_states.get(event.from_chat, {}).get("state", "")
+    if state.startswith("awaiting_ticket"):
         process_ticket_creation(event.from_chat, event.text)
+    elif state.startswith("awaiting_event"):
+        process_event_creation(event.from_chat, event.text)
     else:
         process_command(event.from_chat, event.text)
 
