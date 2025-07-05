@@ -257,12 +257,12 @@ def show_my_tickets(chat_id):
 
         row = [{
             "text": f"{ticket_id} - {subject} ({status}, до {deadline})",
-            "callbackData": f"user_cmd_/view_ticket_{ticket_id}"
+            "callbackData": f"user_cmd_view_ticket_{ticket_id}"  # Убрали /
         }]
         if status == "Открыт":
             row.append({
                 "text": "❌ Закрыть",
-                "callbackData": f"user_cmd_/confirm_close_ticket_{ticket_id}"
+                "callbackData": f"user_cmd_confirm_close_ticket_{ticket_id}"  # Убрали /
             })
         keyboard.append(row)
 
@@ -319,7 +319,10 @@ def go_back_in_event(chat_id):
 
         if state == "awaiting_event_description":
             name = state_info["event_data"].get("name", "")
-            bot.send_text(chat_id=chat_id, text=f"🗓 Измените название события:\n(было: {name})")
+            bot.send_text(chat_id=chat_id, text=f"🗓 Измените название события:\n(было: {name})",inline_keyboard_markup=json.dumps([[
+                {"text": "⬅️ Назад", "callbackData": "user_cmd_/back_in_event"},
+                {"text": "❌ Отмена", "callbackData": "user_cmd_/cancel"}
+            ]]))
             state_info["state"] = "awaiting_event_name"
 
         elif state == "awaiting_event_datetime":
@@ -514,7 +517,10 @@ def go_back(chat_id):
 
         # Возвращаемся к предыдущему шагу
         if state == "awaiting_ticket_description":
-            bot.send_text(chat_id=chat_id, text="🛠 Измените тему обращения:")
+            bot.send_text(chat_id=chat_id, text="🛠 Измените тему обращения:",inline_keyboard_markup=json.dumps([[
+                {"text": "⬅️ Назад", "callbackData": "user_cmd_/back_in_event"},
+                {"text": "❌ Отмена", "callbackData": "user_cmd_/cancel"}
+            ]]))
             state_info["state"] = "awaiting_ticket_subject"
 
         elif state == "awaiting_ticket_deadline":
@@ -524,7 +530,10 @@ def go_back(chat_id):
             bot.send_text(
                 chat_id=chat_id,
                 text=f"🛠 Тема: {subject}\n📝 Описание: {description}\n\nИзмените описание обращения:"
-            )
+            ,inline_keyboard_markup=json.dumps([[
+                {"text": "⬅️ Назад", "callbackData": "user_cmd_/back_in_event"},
+                {"text": "❌ Отмена", "callbackData": "user_cmd_/cancel"}
+            ]]))
             state_info["state"] = "awaiting_ticket_description"
 
         else:
@@ -568,7 +577,9 @@ def process_command(chat_id, command):  # обрабатывает все ком
     elif command == "/my_tickets":
         show_my_tickets(chat_id)
     elif command == "/close_ticket":
-        close_ticket(chat_id)
+        bot.send_text(chat_id=chat_id, text="Введите ID тикета, который вы хотите закрыть:")
+        # Устанавливаем состояние пользователя в "ожидание ID тикета для закрытия"
+        user_states[chat_id] = {"state": "awaiting_ticket_id_to_close"}
     elif command == "/create_event":
         start_create_event(chat_id)
     elif command == "/my_events":
@@ -596,15 +607,51 @@ def simulate_user_message(chat_id, text): #команда от пользова�
     process_command(chat_id, text)
 
 
-def message_cb(bot, event): #обработчик сообщений
-    # Проверяем, находится ли пользователь в процессе создания тикета или события
-    state = user_states.get(event.from_chat, {}).get("state", "")
-    if state.startswith("awaiting_ticket"):
-        process_ticket_creation(event.from_chat, event.text)
+def message_cb(bot, event):
+    chat_id = event.from_chat
+    text = event.text
+
+    state = user_states.get(chat_id, {}).get("state", "")
+
+    # === Обработка закрытия тикета по ID ===
+    if state == "awaiting_ticket_id_to_close":
+        ticket_id = text.strip()  # Получаем ID тикета, введенный пользователем
+        ticket_found = False
+
+        if chat_id in tickets:
+            for ticket in tickets[chat_id]:
+                if ticket["id"] == ticket_id and ticket["status"] == "Открыт":
+                    ticket_found = True
+                    # Запрашиваем подтверждение закрытия тикета
+                    bot.send_text(
+                        chat_id=chat_id,
+                        text=f"Вы уверены, что хотите закрыть тикет #{ticket_id}?",
+                        inline_keyboard_markup=json.dumps([
+                            [
+                                {"text": "✅ Да", "callbackData": f"user_cmd_confirm_close_ticket_{ticket_id}"},
+                                {"text": "❌ Нет", "callbackData": "user_cmd_/cancel"}
+                            ]
+                        ])
+                    )
+                    # Очищаем состояние пользователя
+                    del user_states[chat_id]
+                    break
+
+        if not ticket_found:
+            bot.send_text(chat_id=chat_id, text="❌ Тикет с таким ID не найден или уже закрыт.")
+            del user_states[chat_id]  # Очищаем состояние пользователя
+
+    # === Обработка создания тикета ===
+    elif state.startswith("awaiting_ticket"):
+        process_ticket_creation(chat_id, text)
+
+    # === Обработка создания события ===
     elif state.startswith("awaiting_event"):
-        process_event_creation(event.from_chat, event.text)
+        process_event_creation(chat_id, text)
+
+    # === Если состояние не определено, обрабатываем как обычную команду ===
     else:
-        process_command(event.from_chat, event.text)
+        process_command(chat_id, text)
 
 
 def button_cb(bot, event):
