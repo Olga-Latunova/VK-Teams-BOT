@@ -5,8 +5,13 @@ import time
 from datetime import datetime, timedelta
 import threading
 import pytz  # Импортируем библиотеку для работы с часовыми поясами
+from dotenv import load_dotenv
+import os
 
-TOKEN = "001.1806729577.0340071044:1011814127"  # ваш токен
+# Загружаем переменные из .env
+load_dotenv()
+
+TOKEN = os.getenv("VK_API_TOKEN")
 TELEGRAM_CHANNEL = "https://t.me/IT_105Koderline"  # Ссылка на канал
 COMPANY_SITE = "https://105.ooo"  # Сайт компании
 
