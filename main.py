@@ -21,6 +21,7 @@ tickets = {}  # Хранение созданных тикетов {chat_id: [с
 events = {}   # Хранение созданных событий {chat_id: [список событий]}
 user_context = {}  # Хранит текущий контекст пользователя
 admin_users = set()  # Множество пользователей с админскими правами
+active_chats = set()  # Множество активных чатов с ботом
 
 
 def check_admin_access(chat_id, message_text):
@@ -163,22 +164,52 @@ def send_contacts(chat_id):  # контактная информация
     user_context[chat_id] = "contacts"
     time.sleep(0.3)
     contacts_text = (
-        "📞 Контактная информация:\n\n"
-        "Георгий - gzhilkin@koderline.com"
+        "📞 Контактная информация компании «105 Кодерлайн»:\n\n"
+        "<b>Руководство</b>\n"
+        "• <b>Оводков Василий</b> - генеральный директор\n"
+        "  Согласования по любым вопросам\n"
+        "  vovodkov@koderline.com | вн. номер 105\n\n"
+        
+        "• <b>Иванова Елена</b> - финансовый директор\n"
+        "  Взаиморасчеты с сотрудниками, руководитель проектов\n"
+        "  eivanova@koderline.com | вн. номер 501\n\n"
+        
+        "<b>Отдел кадров</b>\n"
+        "• <b>Рык Наталья</b> - директор по персоналу\n"
+        "  Приём, адаптация, перевод и увольнение сотрудников\n"
+        "  nryk@koderline.com | вн. номер 502\n\n"
+        
+        "<b>ИТ отдел</b>\n"
+        "• <b>Малинин Алексей</b> - системный администратор\n"
+        "  IP телефония, техническое обеспечение\n"
+        "  avmalinin@koderline.com | вн. номер 100\n\n"
+        
+        "• <b>Абросимов Артём</b> - администратор сети и СРМ\n"
+        "  Учётные записи, инструкции пользователя\n"
+        "  aabrosimov@koderline.com\n\n"
+        
+        "<b>Отдел продаж</b>\n"
+        "• <b>Кожемяк Максим</b> - и.о. руководителя отдела продаж\n"
+        "  Взаимодействие с менеджерами по продажам\n"
+        "  mkozhemyak@koderline.com | вн. номер 508"
     )
+    
     bot.send_text(
         chat_id=chat_id,
         text=contacts_text,
-        inline_keyboard_markup=json.dumps([[
-            {
-                "text": "Перейти на сайт",
-                "url": COMPANY_SITE,
-                "style": "primary"
-            }
-        ],
-        [
-            {"text": "⬅️ Назад", "callbackData": "user_cmd_/back", "style": "secondary"}
-        ]])
+        parse_mode="HTML",
+        inline_keyboard_markup=json.dumps([
+            [
+                {
+                    "text": "🌐 Перейти на сайт",
+                    "url": COMPANY_SITE,
+                    "style": "primary"
+                }
+            ],
+            [
+                {"text": "⬅️ Назад", "callbackData": "user_cmd_/back", "style": "secondary"}
+            ]
+        ])
     )
 
 
@@ -196,15 +227,28 @@ def send_1c_docs(chat_id):  # доки 1с (заготовка)
     time.sleep(0.1)
 
 
-def send_1c_reviews(chat_id):  # отзывы 1с (заготовка)
+def send_1c_reviews(chat_id):  # отзывы 1С
     user_context[chat_id] = "1c_reviews"
-    """Отзывы о внедрениях 1С"""
     reviews_text = (
         "⭐ Отзывы о наших внедрениях 1С:\n\n"
+        "https://1c.ru/solutions/public/"
     )
-    bot.send_text(chat_id=chat_id, text=reviews_text, inline_keyboard_markup=json.dumps([[
-        {"text": "⬅️ Назад", "callbackData": "user_cmd_/back", "style": "secondary"}
-    ]]))
+    bot.send_text(
+        chat_id=chat_id,
+        text=reviews_text,
+        inline_keyboard_markup=json.dumps([
+            [
+                {
+                    "text": "Перейти к отзывам", 
+                    "url": "https://1c.ru/solutions/public/",
+                    "style": "primary"
+                }
+            ],
+            [
+                {"text": "⬅️ Назад", "callbackData": "user_cmd_/back", "style": "secondary"}
+            ]
+        ])
+    )
 
 
 def start_support_ticket(chat_id):
@@ -591,6 +635,114 @@ def go_back(chat_id):
             start_command_buttons(chat_id)
 
 
+def show_admin_panel(chat_id):
+    start_command_buttons(chat_id)
+    """Показывает админ-панель с доступными функциями"""
+    if chat_id not in admin_users:
+        bot.send_text(chat_id=chat_id, text="❌ У вас нет доступа к админ-панели.")
+        return
+    
+    bot.send_text(
+        chat_id=chat_id,
+        text="🛠 Админ-панель",
+        inline_keyboard_markup=json.dumps([
+            [
+                {"text": "📢 Рассылка", "callbackData": "admin_cmd_broadcast", "style": "attention"},
+                {"text": "📊 Статистика", "callbackData": "admin_cmd_stats", "style": "primary"}
+            ],
+            [
+                {"text": "⬅️ Назад", "callbackData": "user_cmd_/back", "style": "secondary"}
+            ]
+        ])
+    )
+
+def start_broadcast(chat_id):
+    """Начинает процесс рассылки сообщений"""
+    if chat_id not in admin_users:
+        bot.send_text(chat_id=chat_id, text="❌ У вас нет прав для рассылки.")
+        return
+    
+    user_states[chat_id] = {
+        "state": "awaiting_broadcast_message",
+        "broadcast_data": {}
+    }
+    bot.send_text(
+        chat_id=chat_id,
+        text="📢 Введите сообщение для рассылки всем пользователям:",
+        inline_keyboard_markup=json.dumps([
+            [{"text": "❌ Отмена", "callbackData": "admin_cmd_cancel_broadcast", "style": "secondary"}]
+        ])
+    )
+
+def process_broadcast(chat_id, message_text):
+    """Обрабатывает сообщение для рассылки"""
+    if chat_id not in admin_users:
+        bot.send_text(chat_id=chat_id, text="❌ У вас нет прав для рассылки.")
+        return
+    
+    # Сохраняем сообщение для рассылки
+    user_states[chat_id]["broadcast_data"]["message"] = message_text
+    
+    # Запрашиваем подтверждение
+    bot.send_text(
+        chat_id=chat_id,
+        text=f"✉️ Вы уверены, что хотите разослать это сообщение всем пользователям?\n\n{message_text}",
+        inline_keyboard_markup=json.dumps([
+            [
+                {"text": "✅ Да, разослать", "callbackData": "admin_cmd_confirm_broadcast", "style": "attention"},
+                {"text": "❌ Отмена", "callbackData": "admin_cmd_cancel_broadcast", "style": "secondary"}
+            ]
+        ])
+    )
+
+def send_broadcast(chat_id):
+    """Выполняет рассылку сообщения всем пользователям"""
+    if chat_id not in admin_users:
+        bot.send_text(chat_id=chat_id, text="❌ У вас нет прав для рассылки.")
+        return
+    
+    broadcast_data = user_states[chat_id]["broadcast_data"]
+    message = broadcast_data["message"]
+    
+    # Отправляем сообщение всем активным чатам
+    for user_chat in active_chats:
+        try:
+            bot.send_text(
+                chat_id=user_chat,
+                text=f"📢 Важное сообщение от администратора:\n\n{message}",
+                inline_keyboard_markup=json.dumps([
+                    [{"text": "⬅️ В главное меню", "callbackData": "user_cmd_/back", "style": "secondary"}]
+                ])
+            )
+            time.sleep(0.1)  # Небольшая задержка, чтобы не перегружать сервер
+        except Exception as e:
+            print(f"Ошибка при отправке сообщения пользователю {user_chat}: {e}")
+    
+    # Уведомляем администратора
+    bot.send_text(
+        chat_id=chat_id,
+        text=f"✅ Рассылка успешно отправлена {len(active_chats)} пользователям.",
+        inline_keyboard_markup=json.dumps([
+            [{"text": "⬅️ В админ-панель", "callbackData": "user_cmd_/admin_panel", "style": "secondary"}]
+        ])
+    )
+    
+    # Очищаем состояние
+    del user_states[chat_id]
+
+def cancel_broadcast(chat_id):
+    """Отменяет процесс рассылки"""
+    if chat_id in user_states and user_states[chat_id].get("state") == "awaiting_broadcast_message":
+        del user_states[chat_id]
+    
+    bot.send_text(
+        chat_id=chat_id,
+        text="❌ Рассылка отменена.",
+        inline_keyboard_markup=json.dumps([
+            [{"text": "⬅️ В админ-панель", "callbackData": "user_cmd_/admin_panel", "style": "secondary"}]
+        ])
+    )
+
 def process_command(chat_id, command):  # обрабатывает все команды
     command = command.lower().strip()
     if command == "/start":
@@ -623,8 +775,6 @@ def process_command(chat_id, command):  # обрабатывает все ком
         start_create_event(chat_id)
     elif command == "/my_events":
         show_my_events(chat_id)
-    elif command == "/back":
-        go_back(chat_id)
     elif command == "/back_in_ticket":
         if chat_id in user_states:
             go_back(chat_id)
@@ -632,6 +782,10 @@ def process_command(chat_id, command):  # обрабатывает все ком
             start_command_buttons(chat_id)
     elif command == "/back_in_event":
         go_back_in_event(chat_id)
+    elif command == "/admin_panel":
+        show_admin_panel(chat_id)
+    elif command == "/broadcast":
+        start_broadcast(chat_id)
     else:
         bot.send_text(chat_id=chat_id, text="Неизвестная команда. Введите /help")
 
@@ -649,6 +803,20 @@ def simulate_user_message(chat_id, text): #команда от пользова�
 def message_cb(bot, event):
     chat_id = event.from_chat
     text = event.text
+    
+    # Добавляем чат в активные
+    active_chats.add(chat_id)
+    
+    # Проверка админских прав
+    if check_admin_access(chat_id, text):
+        return
+    
+    state = user_states.get(chat_id, {}).get("state", "")
+    
+    # Обработка состояния рассылки
+    if state == "awaiting_broadcast_message":
+        process_broadcast(chat_id, text)
+        return
 
     # Сначала проверяем, не хочет ли пользователь получить админские права
     if check_admin_access(chat_id, text):
@@ -705,8 +873,12 @@ def button_cb(bot, event):
         )
         time.sleep(0.3)
 
+        chat_id = event.from_chat
+        
+        # Добавляем чат в список активных
+        active_chats.add(chat_id)
+
         if event.data['callbackData'].startswith('user_cmd_'):
-            chat_id = event.from_chat
             callback_data = event.data['callbackData'][9:]  # Убираем префикс user_cmd_
 
             # 🔒 Обработка закрытия тикета
@@ -723,7 +895,6 @@ def button_cb(bot, event):
                         break
 
                 if not ticket_found:
-                   
                     bot.send_text(chat_id=chat_id, text="❌ Не удалось найти открытый тикет.")
 
                 show_my_tickets(chat_id)
@@ -749,9 +920,38 @@ def button_cb(bot, event):
                 if not found:
                     bot.send_text(chat_id=chat_id, text="❌ Тикет не найден.")
 
-            # 🔄 Все остальные команды обрабатываются через process_command
+            # 🔄 Все остальные пользовательские команды
             else:
                 process_command(chat_id, callback_data)
+
+        elif event.data['callbackData'].startswith('admin_cmd_'):
+            if chat_id not in admin_users:
+                bot.send_text(chat_id=chat_id, text="❌ У вас нет прав администратора!")
+                return
+
+            callback_data = event.data['callbackData'][10:]  # Убираем префикс admin_cmd_
+
+            # 📢 Обработка команд админ-панели
+            if callback_data == "broadcast":
+                start_broadcast(chat_id)
+            elif callback_data == "stats":
+                stats_text = (
+                    f"📊 Статистика бота:\n\n"
+                    f"• Активных пользователей: {len(active_chats)}\n"
+                    f"• Создано тикетов: {sum(len(v) for v in tickets.values())}\n"
+                    f"• Создано событий: {sum(len(v) for v in events.values())}"
+                )
+                bot.send_text(
+                    chat_id=chat_id,
+                    text=stats_text,
+                    inline_keyboard_markup=json.dumps([
+                        [{"text": "⬅️ Назад", "callbackData": "user_cmd_/admin_panel", "style": "secondary"}]
+                    ])
+                )
+            elif callback_data == "confirm_broadcast":
+                send_broadcast(chat_id)
+            elif callback_data == "cancel_broadcast":
+                cancel_broadcast(chat_id)
 
     except Exception as e:
         print(f"Ошибка обработки кнопки: {e}")
