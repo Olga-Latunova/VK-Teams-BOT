@@ -23,11 +23,11 @@ events = {}   # Хранение созданных событий {chat_id: [с
 user_context = {}  # Хранит текущий контекст пользователя
 admin_users = set()  # Множество пользователей с админскими правами
 active_chats = set()  # Множество активных чатов с ботом
+adm_password = str(105)
 
 
-def check_admin_access(chat_id, message_text):
-    """Проверяет, хочет ли пользователь получить админские права"""
-    if message_text.strip() == "105":
+def check_admin_access(chat_id, message_text): #получение администраторских прав
+    if message_text.strip() == adm_password:
         admin_users.add(chat_id)
         bot.send_text(
             chat_id=chat_id,
@@ -39,7 +39,6 @@ def check_admin_access(chat_id, message_text):
         return True
     return False
 
-
 def back_command_button(chat_id):  # Кнопка "Назад"
     bot.send_text(
         chat_id=chat_id,
@@ -48,7 +47,6 @@ def back_command_button(chat_id):  # Кнопка "Назад"
             [{"text": "⬅️ Назад", "callbackData": "user_cmd_/back", "style": "secondary"}]
         ])
     )
-
 
 def start_command_buttons(chat_id):  # Главное меню
     # Если пользователь админ, показываем дополнительные кнопки
@@ -104,7 +102,6 @@ def start_command_buttons(chat_id):  # Главное меню
             ]),
         )
 
-
 def send_welcome(chat_id):  # приветственное сообщение при /start
     welcome_text = (
         "👋 Добро пожаловать в бот компании «105 Кодерлайн»!\n\n"
@@ -118,7 +115,6 @@ def send_welcome(chat_id):  # приветственное сообщение п
     bot.send_text(chat_id=chat_id, text=welcome_text)
     time.sleep(0.1)
     start_command_buttons(chat_id)
-
 
 def send_news(chat_id):  # новости
     user_context[chat_id] = "news"
@@ -134,7 +130,6 @@ def send_news(chat_id):  # новости
         ]
     ]))
     time.sleep(0.1)
-
 
 def send_about(chat_id):  # информация о компании
     user_context[chat_id] = "about"
@@ -159,7 +154,6 @@ def send_about(chat_id):  # информация о компании
             {"text": "⬅️ Назад", "callbackData": "user_cmd_/back", "style": "secondary"}
         ]])
     )
-
 
 def send_contacts(chat_id):  # контактная информация
     user_context[chat_id] = "contacts"
@@ -213,8 +207,7 @@ def send_contacts(chat_id):  # контактная информация
         ])
     )
 
-
-def send_1c_docs(chat_id):  # доки 1с (заготовка)
+def send_1c_docs(chat_id):  #доки 1с
     user_context[chat_id] = "1c_docs"
     """Материалы по 1С"""
     docs_text = (
@@ -227,8 +220,7 @@ def send_1c_docs(chat_id):  # доки 1с (заготовка)
         ]))
     time.sleep(0.1)
 
-
-def send_1c_reviews(chat_id):  # отзывы 1С
+def send_1c_reviews(chat_id):  #отзывы 1С
     user_context[chat_id] = "1c_reviews"
     reviews_text = (
         "⭐ Отзывы о наших внедрениях 1С:\n\n"
@@ -250,7 +242,6 @@ def send_1c_reviews(chat_id):  # отзывы 1С
             ]
         ])
     )
-
 
 def start_support_ticket(chat_id):
     """Начало создания тикета"""
@@ -323,11 +314,8 @@ def process_ticket_creation(chat_id, message_text):
                 chat_id=chat_id,
                 text="❌ Неверный формат даты. Пожалуйста, укажите дату в формате ДД.ММ.ГГГГ:"
             )
-    
 
-
-def show_my_tickets(chat_id):
-    """Показывает тикеты пользователя с возможностью закрытия"""
+def show_my_tickets(chat_id): #тикеты пользователя с возможностью закрытия
     if chat_id not in tickets or not tickets[chat_id]:
         bot.send_text(chat_id=chat_id, text="У вас нет активных тикетов.")
         return
@@ -341,12 +329,12 @@ def show_my_tickets(chat_id):
 
         row = [{
             "text": f"{ticket_id} - {subject} ({status}, до {deadline})",
-            "callbackData": f"user_cmd_view_ticket_{ticket_id}"  # Убрали /
+            "callbackData": f"user_cmd_view_ticket_{ticket_id}"
         }]
         if status == "Открыт":
             row.append({
                 "text": "❌ Закрыть",
-                "callbackData": f"user_cmd_confirm_close_ticket_{ticket_id}"  # Убрали /
+                "callbackData": f"user_cmd_confirm_close_ticket_{ticket_id}"
             })
         keyboard.append(row)
 
@@ -356,8 +344,7 @@ def show_my_tickets(chat_id):
         inline_keyboard_markup=json.dumps(keyboard)
     )
 
-def close_ticket(chat_id):
-    """Выводит список тикетов для закрытия"""
+def close_ticket(chat_id): #список открытых тикетов
     if chat_id not in tickets or not tickets[chat_id]:
         bot.send_text(chat_id=chat_id, text="❌ У вас нет активных тикетов.")
         return
@@ -381,8 +368,7 @@ def close_ticket(chat_id):
         inline_keyboard_markup=json.dumps(keyboard)
     )
 
-def start_create_event(chat_id):
-    """Начало создания события"""
+def start_create_event(chat_id): #создание события
     user_states[chat_id] = {
         "state": "awaiting_event_name",
         "event_data": {}
@@ -396,7 +382,7 @@ def start_create_event(chat_id):
         ]])
     )
 
-def go_back_in_event(chat_id):
+def go_back_in_event(chat_id): #"назад" для этапов события
     if chat_id in user_states:
         state_info = user_states[chat_id]
         state = state_info["state"]
@@ -441,8 +427,7 @@ def go_back_in_event(chat_id):
         else:
             start_command_buttons(chat_id)
 
-def process_event_creation(chat_id, message_text):
-    """Обработка шагов создания события"""
+def process_event_creation(chat_id, message_text): #обработка и сохранение события
     if user_states.get(chat_id, {}).get("state") == "awaiting_event_name":
         user_states[chat_id]["event_data"]["name"] = message_text
         user_states[chat_id]["state"] = "awaiting_event_description"
@@ -555,7 +540,7 @@ def process_event_creation(chat_id, message_text):
                      "Используйте формат Д:ЧЧ:ММ:СС\n")
                
 
-def schedule_reminder(chat_id, event_id, event_name, reminder_time):
+def schedule_reminder(chat_id, event_id, event_name, reminder_time): #напоминание о событии
         now = datetime.now(MOSCOW_TZ)
         delay = (reminder_time - now).total_seconds()
         if delay > 0:
@@ -571,8 +556,7 @@ def schedule_reminder(chat_id, event_id, event_name, reminder_time):
                 ]])
             )
 
-def show_my_events(chat_id):
-    """Показывает события пользователя"""
+def show_my_events(chat_id): #события пользователя
     if chat_id not in events or not events[chat_id]:
         bot.send_text(chat_id=chat_id, text="У вас нет запланированных событий.", inline_keyboard_markup=json.dumps([[
         {"text": "❌ Назад", "callbackData": "user_cmd_/back", "style": "secondary"}
@@ -595,7 +579,7 @@ def show_my_events(chat_id):
         ]])
     )
 
-def show_help(chat_id):
+def show_help(chat_id): #действие при команде /help
     user_context[chat_id] = "help"
     help_text = (
         "📋 Список всех доступных команд:\n\n"
@@ -627,15 +611,14 @@ def show_help(chat_id):
         ]))
 
 
-def cancel_current_dialog(chat_id):
+def cancel_current_dialog(chat_id): #???выход из диалога??? не вижу удаления из списка активных чатов с ботом
     if chat_id in user_states:
         del user_states[chat_id]  # Полностью очищаем состояние
     bot.send_text(chat_id=chat_id, text="❌ Вы вышли из текущего диалога.", inline_keyboard_markup=json.dumps([
             [{"text": "⬅️ Назад", "callbackData": "user_cmd_/back", "style": "secondary"}]
         ]))
 
-
-def go_back(chat_id):
+def go_back(chat_id): #"назад"
     if chat_id in user_states:
         state_info = user_states[chat_id]
         state = state_info["state"]
@@ -676,10 +659,8 @@ def go_back(chat_id):
         else:
             start_command_buttons(chat_id)
 
-
-def show_admin_panel(chat_id):
+def show_admin_panel(chat_id): #панель администратора
     start_command_buttons(chat_id)
-    """Показывает админ-панель с доступными функциями"""
     if chat_id not in admin_users:
         bot.send_text(chat_id=chat_id, text="❌ У вас нет доступа к админ-панели.")
         return
@@ -698,8 +679,7 @@ def show_admin_panel(chat_id):
         ])
     )
 
-def start_broadcast(chat_id):
-    """Начинает процесс рассылки сообщений"""
+def start_broadcast(chat_id): #создание рассылки
     if chat_id not in admin_users:
         bot.send_text(chat_id=chat_id, text="❌ У вас нет прав для рассылки.")
         return
@@ -716,8 +696,7 @@ def start_broadcast(chat_id):
         ])
     )
 
-def process_broadcast(chat_id, message_text):
-    """Обрабатывает сообщение для рассылки"""
+def process_broadcast(chat_id, message_text): #обработка и подтверждение рассылки
     if chat_id not in admin_users:
         bot.send_text(chat_id=chat_id, text="❌ У вас нет прав для рассылки.")
         return
@@ -737,8 +716,7 @@ def process_broadcast(chat_id, message_text):
         ])
     )
 
-def send_broadcast(chat_id):
-    """Выполняет рассылку сообщения всем пользователям"""
+def send_broadcast(chat_id): #выполнение рассылки
     if chat_id not in admin_users:
         bot.send_text(chat_id=chat_id, text="❌ У вас нет прав для рассылки.")
         return
@@ -772,8 +750,7 @@ def send_broadcast(chat_id):
     # Очищаем состояние
     del user_states[chat_id]
 
-def cancel_broadcast(chat_id):
-    """Отменяет процесс рассылки"""
+def cancel_broadcast(chat_id): #отмена рассылки
     if chat_id in user_states and user_states[chat_id].get("state") == "awaiting_broadcast_message":
         del user_states[chat_id]
     
@@ -831,7 +808,6 @@ def process_command(chat_id, command):  # обрабатывает все ком
     else:
         bot.send_text(chat_id=chat_id, text="Неизвестная команда. Введите /help")
 
-
 def simulate_user_message(chat_id, text): #команда от пользователя
     time.sleep(0.3)
     bot.send_text(
@@ -840,7 +816,6 @@ def simulate_user_message(chat_id, text): #команда от пользова�
     )
     time.sleep(0.3)
     process_command(chat_id, text)
-
 
 def message_cb(bot, event):
     chat_id = event.from_chat
@@ -905,7 +880,6 @@ def message_cb(bot, event):
     # === Если состояние не определено, обрабатываем как обычную команду ===
     else:
         process_command(chat_id, text)
-
 
 def button_cb(bot, event):
     try:
@@ -1001,7 +975,6 @@ def button_cb(bot, event):
             query_id=event.data.get('queryId', ''),
             text="❌ Ошибка обработки"
         )
-
 
 # Регистрация обработчиков
 bot.dispatcher.add_handler(MessageHandler(callback=message_cb))
