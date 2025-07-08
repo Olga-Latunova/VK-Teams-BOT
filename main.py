@@ -63,7 +63,7 @@ admin_tickets = {}  # Хранение тикетов администратор
 adm_password = str(105) # Пароль администратора
 admin_users = {
     "a.kalinin@bot-60.bizml.ru": "Калинин Артур",
-   
+    "o.latunova@bot-60.bizml.ru": "Латунова Ольга",
     "vovodkov@koderline.com": "Оводков Василий",
     "eivanova@koderline.com": "Иванова Елена",
     "nryk@koderline.com": "Рык Наталья",
@@ -299,11 +299,12 @@ def process_ticket_creation(chat_id, message_text): #обработка и со�
                            
         # Добавляем остальных администраторов
             for email, name in admin_users.items():
-                admin_buttons.append({
-                    "text": f"👤 {name}",
-                    "callbackData": f"assign_ticket_{email}"
+                 if email != chat_id:  # Исключаем текущего пользователя из списка, если он админ
+                    admin_buttons.append({
+                        "text": f"👤 {name}",
+                        "callbackData": f"assign_ticket_{email}"
                 })
-        
+                    
         # Разбиваем кнопки по 2 в ряд
             keyboard = [admin_buttons[i:i + 2] for i in range(0, len(admin_buttons), 2)]
             keyboard.append([back_button, cancel_button])
@@ -865,7 +866,7 @@ def cancel_broadcast(chat_id): #отмена рассылки
         ])
     )
 
-def go_back(chat_id):
+def go_back(chat_id): #кнопка "назад"
      # Если есть активное состояние (создание тикета/события)
     if chat_id in user_states:
         state_info = user_states[chat_id]
@@ -1106,7 +1107,6 @@ def button_cb(bot, event):
             query_id=event.data.get('queryId', ''),
             text="❌ Ошибка обработки"
         )
-
 
 # Регистрация обработчиков
 bot.dispatcher.add_handler(MessageHandler(callback=message_cb))
