@@ -63,7 +63,7 @@ admin_tickets = {}  # Хранение тикетов администратор
 adm_password = str(105) # Пароль администратора
 admin_users = {
     "a.kalinin@bot-60.bizml.ru": "Калинин Артур",
-    "o.latunova@bot-60.bizml.ru": "Латунова Ольга",
+    
     "vovodkov@koderline.com": "Оводков Василий",
     "eivanova@koderline.com": "Иванова Елена",
     "nryk@koderline.com": "Рык Наталья",
@@ -71,12 +71,13 @@ admin_users = {
     "aabrosimov@koderline.com": "Абросимов Артём",
     "mkozhemyak@koderline.com": "Кожемяк Максим"
 }  # Словарь администраторов {email: имя}
-
+#"o.latunova@bot-60.bizml.ru": "Латунова Ольга",
 # Глобальный счетчик тикетов
 ticket_counter = 1
 
 #общие кнопки для всех состояний
 back_button = {"text": "⬅️ Назад", "callbackData": "user_cmd_/back"} #кнопка "назад"
+menu_button = {"text": "Меню", "callbackData": "user_cmd_/back", "style": "secondary"} #кнопка "меню"
 cancel_button = {"text": "❌ Отмена", "callbackData": "user_cmd_/cancel"} #кнопка "отмена"
 
 #время задержки ответа (симуляция обработки запроса)
@@ -405,8 +406,8 @@ def assign_ticket(chat_id, admin_id):
         chat_id=chat_id,
         text=ticket_info,
         inline_keyboard_markup=json.dumps([
-            [{"text": "📋 Мои тикеты", "callbackData": "user_cmd_/my_tickets"}],
-            [{"text": "⬅️ В меню", "callbackData": "user_cmd_/start"}]
+            [{"text": "📋 Мои тикеты", "callbackData": "user_cmd_/my_tickets", "style": "primary"}],
+            [menu_button]
         ])
     )
     
@@ -414,39 +415,46 @@ def assign_ticket(chat_id, admin_id):
     user_states.pop(chat_id, None)
 
 def show_user_tickets(chat_id):
-    if chat_id not in user_tickets or not user_tickets[chat_id]:
-        bot.send_text(chat_id=chat_id, text="❌ У вас нет личных тикетов.")
-        return
-
-    personal_tickets = [
-        t for t in user_tickets.get(chat_id, []) 
-        if tickets.get(t, {}).get("creator") == chat_id  # Показываем только тикеты, созданные этим пользователем
+    # Получаем все тикеты, где текущий пользователь является создателем
+    user_created_tickets = [
+        t for t in tickets.values() 
+        if t.get("creator") == chat_id
     ]
 
-    if not personal_tickets:
-        bot.send_text(chat_id=chat_id, text="❌ У вас нет личных тикетов.")
+    if not user_created_tickets:
+        bot.send_text(chat_id=chat_id, text="❌ У вас нет созданных тикетов.")
         return
 
     keyboard = []
-    for ticket_id in personal_tickets:
-        ticket = tickets[ticket_id]
-        row = [
-            {
-                "text": f"{ticket_id}: {ticket['subject']} ({ticket['status']})",
-                "callbackData": f"view_ticket_{ticket_id}"
-            }
-        ]
-        if ticket["status"] == "Открыт":  # Добавляем кнопку закрытия только для открытых тикетов
+    for ticket in user_created_tickets:
+        ticket_id = ticket["id"]
+        status = ticket["status"]
+        assigned_to = ticket.get("assigned_to_name", "Не назначен")
+        
+        # Формируем текст кнопки
+        button_text = f"{ticket_id}: {ticket['subject']} ({status})"
+        if status == "Открыт" and assigned_to != "Себе":
+            button_text += f" → {assigned_to}"
+        
+        row = [{
+            "text": button_text,
+            "callbackData": f"view_ticket_{ticket_id}"
+        }]
+        
+        # Добавляем кнопку закрытия только для личных тикетов (назначенных себе)
+        if status == "Открыт" and assigned_to == "Себе":
             row.append({
                 "text": "✅ Закрыть",
                 "callbackData": f"close_ticket_{ticket_id}"
             })
+        
         keyboard.append(row)
     
     keyboard.append([back_button])
+    
     bot.send_text(
         chat_id=chat_id,
-        text="📋 Ваши личные тикеты:",
+        text="📋 Ваши тикеты:",
         inline_keyboard_markup=json.dumps(keyboard)
     )
 
@@ -500,10 +508,21 @@ def show_ticket_info(chat_id, ticket_id):
     )
     
     keyboard = []
-    if chat_id in admin_users and ticket["status"] == "Открыт":
+    
+    # Показываем кнопку закрытия только если:
+    # 1. Это админ ИЛИ
+    # 2. Это создатель тикета И тикет назначен себе
+    show_close_button = (
+        (chat_id in admin_users) or
+        (ticket["creator"] == chat_id and 
+         ticket.get("assigned_to_name") == "Себе" and
+         ticket["status"] == "Открыт")
+    )
+    
+    if show_close_button and ticket["status"] == "Открыт":
         keyboard.append([{
             "text": "✅ Закрыть тикет",
-            "callbackData": f"admin_cmd_close_ticket_{ticket_id}"
+            "callbackData": f"close_ticket_{ticket_id}"
         }])
     
     keyboard.append([back_button])
@@ -523,8 +542,9 @@ def close_ticket(chat_id, ticket_id):
     
     # Разрешаем закрывать:
     # 1. Администраторам
-    # 2. Создателю тикета
-    if chat_id not in admin_users and ticket["creator"] != chat_id:
+    # 2. Создателю тикета, если он назначен себе
+    if (chat_id not in admin_users and 
+        (ticket["creator"] != chat_id or ticket.get("assigned_to_name") != "Себе")):
         bot.send_text(chat_id=chat_id, text="❌ Вы не можете закрыть этот тикет.")
         return
     
