@@ -63,7 +63,7 @@ admin_tickets = {}  # Хранение тикетов администратор
 adm_password = str(105) # Пароль администратора
 admin_users = {
     "a.kalinin@bot-60.bizml.ru": "Калинин Артур",
-    
+    "o.latunova@bot-60.bizml.ru": "Латунова Ольга",
     "vovodkov@koderline.com": "Оводков Василий",
     "eivanova@koderline.com": "Иванова Елена",
     "nryk@koderline.com": "Рык Наталья",
@@ -371,9 +371,9 @@ def assign_ticket(chat_id, admin_id):
         admin_tickets[admin_id].append(ticket_id)
         
         # Уведомляем администратора (если он онлайн)
-        if admin_id in active_chats:
+        try:
             bot.send_text(
-                chat_id=admin_id,
+                chat_id=admin_id,  # Здесь предполагается, что admin_id - это chat_id
                 text=(
                     f"🔔 Вам назначен новый тикет!\n\n"
                     f"🔹 Номер: {ticket_id}\n"
@@ -389,6 +389,8 @@ def assign_ticket(chat_id, admin_id):
                     ]
                 ])
             )
+        except Exception as e:
+            print(f"Ошибка при отправке уведомления администратору: {e}")
     
     # Формируем единое сообщение с информацией о тикете
     ticket_info = (
