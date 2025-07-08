@@ -56,13 +56,37 @@ user_states = {}
 tickets = {}  # Хранение созданных тикетов {chat_id: [список тикетов]}
 events = {}   # Хранение созданных событий {chat_id: [список событий]}
 user_context = {}  # Хранит текущий контекст пользователя
-admin_users = set()  # Множество пользователей с админскими правами
+#admin_users = set()  # Множество пользователей с админскими правами
 active_chats = set()  # Множество активных чатов с ботом
+user_tickets = {}  # Хранение тикетов пользователей {chat_id: [ticket_ids]}
+admin_tickets = {}  # Хранение тикетов администраторов {chat_id: [ticket_ids]}
 adm_password = str(105) # Пароль администратора
+admin_users = {
+    "a.kalinin@bot-60.bizml.ru": "Калинин Артур",
+    "o.latunova@bot-60.bizml.ru" : "Латунова Ольга",
+    "vovodkov@koderline.com": "Оводков Василий",
+    "eivanova@koderline.com": "Иванова Елена",
+    "nryk@koderline.com": "Рык Наталья",
+    "avmalinin@koderline.com": "Малинин Алексей",
+    "aabrosimov@koderline.com": "Абросимов Артём",
+    "mkozhemyak@koderline.com": "Кожемяк Максим"
+}  # Словарь администраторов {email: имя}
+
+# Глобальный счетчик тикетов
+ticket_counter = 1
 
 #общие кнопки для всех состояний
 back_button = {"text": "⬅️ Назад", "callbackData": "user_cmd_/back"} #кнопка "назад"
 cancel_button = {"text": "❌ Отмена", "callbackData": "user_cmd_/cancel"} #кнопка "отмена"
+
+#время задержки ответа (симуляция обработки запроса)
+processing_time = time.sleep(0.2)
+
+def generate_ticket_id(): #генерация идентификатора тикета
+    global ticket_counter
+    ticket_id = f"TKT-{ticket_counter:04d}"
+    ticket_counter += 1
+    return ticket_id
 
 def start_command_buttons(chat_id):  # Главное меню
     # Если пользователь админ, показываем дополнительные кнопки
@@ -118,7 +142,7 @@ def start_command_buttons(chat_id):  # Главное меню
             ]),
         )
 
-def check_admin_access(chat_id, message_text): #получение администраторских прав
+def receiving_admin_access(chat_id, message_text): #получение администраторских прав с помощью пароля (а надо ли?...)
     if message_text.strip() == adm_password:
         admin_users.add(chat_id)
         bot.send_text(
@@ -126,6 +150,11 @@ def check_admin_access(chat_id, message_text): #получение админи�
             text="🔓 Вы получили админские права!",
         )
         start_command_buttons(chat_id)
+        return True
+    return False
+
+def check_admin_access(chat_id): #получение администраторских прав
+    if chat_id in admin_users:
         return True
     return False
 
@@ -140,34 +169,30 @@ def send_welcome(chat_id):  # приветственное сообщение п
         "Выберите действие кнопками ниже или введите /help для списка команд."
     )
     bot.send_text(chat_id=chat_id, text=welcome_text)
-    time.sleep(0.1)
+    processing_time
     start_command_buttons(chat_id)
 
 def send_news(chat_id):  # новости
     user_context[chat_id] = "news"
-    time.sleep(0.3)
+    processing_time
     bot.send_text(
         chat_id=chat_id,
         text=f"📢 Актуальные новости компании доступны в нашем Telegram-канале:\n\n{TELEGRAM_CHANNEL}",
-        inline_keyboard_markup=json.dumps([[
-            {"text": "📨 Перейти в Telegram", "url": TELEGRAM_CHANNEL, "style": "primary"}
-        ],
-        [
-            {"text": "⬅️ Назад", "callbackData": "user_cmd_/back", "style": "secondary"}
-        ]
+        inline_keyboard_markup=json.dumps([[{"text": "📨 Перейти в Telegram", "url": TELEGRAM_CHANNEL, "style": "primary"}],
+        [back_button]
     ]))
-    time.sleep(0.1)
+    processing_time
 
 def send_about(chat_id):  # информация о компании
     user_context[chat_id] = "about"
-    time.sleep(0.3)
+    processing_time
     about_text = (
         "🏢 Компания «105 Кодерлайн» работает в Российском центре программирования "
         "ОЭЗ ТВТ «Дубна» как представительство «Кодерлайн», партнер фирмы 1С, "
         "а также мы и резиденты особой экономической зоны технико-внедренческого типа «Дубна».\n\n"
         f"🌐 Подробнее: {COMPANY_SITE}"
     )
-   bot.send_text(
+    bot.send_text(
         chat_id=chat_id,
         text=about_text,
         inline_keyboard_markup=json.dumps([[
@@ -182,8 +207,7 @@ def send_about(chat_id):  # информация о компании
 
 def send_contacts(chat_id):  # контактная информация
     user_context[chat_id] = "contacts"
-    time.sleep(0.3)
-    
+    processing_time
     bot.send_text(
         chat_id=chat_id,
         text=CONTACTS,
@@ -199,8 +223,8 @@ def send_contacts(chat_id):  # контактная информация
             [back_button]
         ])
     )
-   time.sleep(0.5)
-   start_command_buttons(chat_id)
+    processing_time
+    start_command_buttons(chat_id)
 
 def send_1c_docs(chat_id):  #доки 1с
     user_context[chat_id] = "1c_docs"
@@ -209,144 +233,327 @@ def send_1c_docs(chat_id):  #доки 1с
         f"• Обучающие видеоматериалы для менеджера по продажам - {DOCS_VIDEO}\n"
         f"• Инструкции в текстовом формате для менеджера по продажам - {DOCS_TEXT}"
     )
-    bot.send_text(chat_id=chat_id, text=docs_text, inline_keyboard_markup=json.dumps([
-            [back_button]
-        ]))
-    time.sleep(0.1)
+    processing_time
+    bot.send_text(chat_id=chat_id, text=docs_text, inline_keyboard_markup=json.dumps([[back_button]]))
 
 def send_1c_reviews(chat_id):  #отзывы 1С
     user_context[chat_id] = "1c_reviews"
-    reviews_text = f"⭐ Отзывы о наших внедрениях 1С:\n\n{REVIEWS}",
-
+    reviews_text = f"⭐ Отзывы о наших внедрениях 1С:\n\n{REVIEWS}"
+    processing_time
     bot.send_text(
         chat_id=chat_id,
         text=reviews_text,
         inline_keyboard_markup=json.dumps([
-            [
-                {
-                    "text": "Перейти к отзывам", "url": REVIEWS, "style": "primary"
-                }
-            ],
+            [{   "text": "Перейти к отзывам", "url": REVIEWS, "style": "primary"}],
             [back_button]
         ])
     )
 
 def start_support_ticket(chat_id): #создание тикета
-    user_states[chat_id] = {
+  user_states[chat_id] = {
         "state": "awaiting_ticket_subject",
-        "ticket_data": {}  # Будем хранить данные тикета здесь
+        "ticket_data": {
+            "creator": chat_id,
+            "assigned_to": None
+        }
     }
-    bot.send_text(chat_id=chat_id, text="🛠 Создание тикета\n\nУкажите тему обращения:",
-    inline_keyboard_markup=json.dumps([[back_button]]))
+  processing_time
+  bot.send_text(chat_id=chat_id, text="🛠 Создание тикета\n\nУкажите тему обращения:",
+        inline_keyboard_markup=json.dumps([[back_button]]))
 
 def process_ticket_creation(chat_id, message_text): #обработка и сохранение тикета
-    if user_states.get(chat_id, {}).get("state") == "awaiting_ticket_subject":
-        user_states[chat_id]["ticket_data"]["subject"] = message_text
-        user_states[chat_id]["state"] = "awaiting_ticket_description"
-        bot.send_text(chat_id=chat_id, text="📝 Теперь опишите проблему подробно:", 
-                      inline_keyboard_markup=json.dumps([[back_button, cancel_button]]))
+    state = user_states.get(chat_id, {}).get("state")
+    ticket_data = user_states.get(chat_id, {}).get("ticket_data", {})
     
-    elif user_states.get(chat_id, {}).get("state") == "awaiting_ticket_description":
-        user_states[chat_id]["ticket_data"]["description"] = message_text
+    if state == "awaiting_ticket_subject":
+        ticket_data["subject"] = message_text
+        user_states[chat_id]["state"] = "awaiting_ticket_description"
+        processing_time
+        bot.send_text(chat_id=chat_id, text="📝 Теперь опишите проблему подробно:", 
+                     inline_keyboard_markup=json.dumps([[back_button, cancel_button]]))
+    
+    elif state == "awaiting_ticket_description":
+        ticket_data["description"] = message_text
         user_states[chat_id]["state"] = "awaiting_ticket_deadline"
+        processing_time
         bot.send_text(
             chat_id=chat_id,
             text="⏰ Укажите дедлайн для задачи (в формате ДД.ММ.ГГГГ, например 31.12.2023):", 
             inline_keyboard_markup=json.dumps([[back_button, cancel_button]])
-            )
+        )
     
-    elif user_states.get(chat_id, {}).get("state") == "awaiting_ticket_deadline":
+    elif state == "awaiting_ticket_deadline":
         try:
             deadline = datetime.strptime(message_text, "%d.%m.%Y").date()
-            user_states[chat_id]["ticket_data"]["deadline"] = deadline.strftime("%d.%m.%Y")
+            ticket_data["deadline"] = deadline.strftime("%d.%m.%Y")
+            user_states[chat_id]["state"] = "awaiting_ticket_admin"
             
-            # Сохраняем тикет
-            if chat_id not in tickets:
-                tickets[chat_id] = []
+            # Формируем список администраторов для выбора, включая себя
+            admin_buttons = []
             
-            ticket_id = f"TKT-{len(tickets[chat_id])+1:03d}"
-            ticket_data = user_states[chat_id]["ticket_data"]
-            ticket_data["id"] = ticket_id
-            ticket_data["status"] = "Открыт"
-            ticket_data["created_at"] = datetime.now(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
+            # Добавляем кнопку "Назначить себе"
+            admin_buttons.append({"text": "👤 Назначить себе", "callbackData": f"assign_ticket_{chat_id}" })# Используем chat_id пользователя                  
+                                   
+            # Добавляем остальных администраторов
+            for email, name in admin_users.items():
+                if email != chat_id:  # Не добавляем себя повторно
+                    admin_buttons.append({
+                        "text": f"👤 {name}",
+                        "callbackData": f"assign_ticket_{email}"
+                    })
             
-            tickets[chat_id].append(ticket_data)
+            # Разбиваем кнопки по 2 в ряд
+            keyboard = [admin_buttons[i:i + 2] for i in range(0, len(admin_buttons), 2)]
+            keyboard.append([back_button, cancel_button])
             
-            # Формируем сообщение с информацией о тикете
-            ticket_info = (
-                f"✅ Тикет создан!\n\n"
-                f"🔹 Номер: {ticket_id}\n"
-                f"🔹 Тема: {ticket_data['subject']}\n"
-                f"🔹 Описание: {ticket_data['description']}\n"
-                f"🔹 Дедлайн: {ticket_data['deadline']}\n"
-                f"🔹 Статус: {ticket_data['status']}\n"
-                f"🔹 Создан: {ticket_data['created_at']}"
+            processing_time
+            bot.send_text(
+                chat_id=chat_id,
+                text="👥 Выберите администратора для назначения тикета:" + 
+                     ("\n\nВы можете назначить тикет себе или администратору." if chat_id in admin_users else ""),
+                inline_keyboard_markup=json.dumps(keyboard)
             )
             
-            bot.send_text(chat_id=chat_id, text=ticket_info, inline_keyboard_markup=json.dumps([[
-        {"text": "⬅️ В главное меню", "callbackData": "user_cmd_/back", "style": "secondary"}
-    ]]) )
-            user_states.pop(chat_id, None)  # Удаляем состояние
-            time.sleep(0.5)
-            
         except ValueError:
+            processing_time
             bot.send_text(
                 chat_id=chat_id,
                 text="❌ Неверный формат даты. Пожалуйста, укажите дату в формате ДД.ММ.ГГГГ:"
             )
 
-def show_my_tickets(chat_id, close_mode=False):  # Добавляем параметр для режима закрытия (Объединил 2 функции, работает так же)
-    if chat_id not in tickets or not tickets[chat_id]:
-        bot.send_text(chat_id=chat_id, text="❌ У вас нет активных тикетов." if close_mode else "У вас нет активных тикетов.")
+def assign_ticket_to_admin(chat_id, admin_email):
+    # Получаем данные тикета из состояния пользователя
+    ticket_data = user_states[chat_id]["ticket_data"]
+    ticket_data["assigned_to"] = admin_email
+    
+    # Определяем тип назначения
+    if admin_email == chat_id:
+        ticket_data["assigned_to_name"] = "Себе"
+        ticket_data["ticket_type"] = "personal"  # Маркер личного тикета
+    else:
+        ticket_data["assigned_to_name"] = admin_users.get(admin_email, "Администратору")
+        ticket_data["ticket_type"] = "assigned"  # Маркер рабочего тикета
+    
+    # Создаем тикет
+    ticket_id = generate_ticket_id()
+    ticket_data.update({
+        "id": ticket_id,
+        "status": "Открыт",
+        "created_at": datetime.now(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
+    })
+    
+    # Сохраняем тикет
+    tickets[ticket_id] = ticket_data
+    
+    # Всегда добавляем создателю
+    if ticket_data["creator"] not in user_tickets:
+        user_tickets[ticket_data["creator"]] = []
+    user_tickets[ticket_data["creator"]].append(ticket_id)
+    
+    # Добавляем в admin_tickets только если это НЕ личный тикет
+    if ticket_data["ticket_type"] == "assigned":
+        if admin_email not in admin_tickets:
+            admin_tickets[admin_email] = []
+        admin_tickets[admin_email].append(ticket_id)
+    
+    # Отправляем уведомление администратору (если назначено не себе и он онлайн)
+    if admin_email != chat_id and admin_email in active_chats:
+        admin_notification = (
+            f"🔔 Вам назначен новый тикет!\n\n"
+            f"🔹 Номер: {ticket_id}\n"
+            f"🔹 От: {chat_id}\n"
+            f"🔹 Тема: {ticket_data['subject']}\n"
+            f"🔹 Дедлайн: {ticket_data['deadline']}\n\n"
+            f"📝 Описание:\n{ticket_data['description']}"
+        )
+        
+        bot.send_text(
+            chat_id=admin_email,
+            text=admin_notification,
+            inline_keyboard_markup=json.dumps([
+                [
+                    {"text": "🛠 Посмотреть", "callbackData": f"view_ticket_{ticket_id}"},
+                    {"text": "✅ Закрыть", "callbackData": f"admin_cmd_close_ticket_{ticket_id}"}
+                ]
+            ])
+        )
+    
+    # Формируем сообщение об успешном создании
+    ticket_info = (
+        f"✅ Тикет успешно создан!\n\n"
+        f"🔹 Номер: {ticket_id}\n"
+        f"🔹 Назначен: {ticket_data['assigned_to_name']}\n"
+        f"🔹 Тема: {ticket_data['subject']}\n"
+        f"🔹 Дедлайн: {ticket_data['deadline']}\n"
+        f"🔹 Статус: {ticket_data['status']}"
+    )
+    
+    # Отправляем подтверждение создателю
+    processing_time
+    bot.send_text(
+        chat_id=chat_id,
+        text=ticket_info
+    )
+    start_command_buttons(chat_id)
+    
+    # Очищаем состояние пользователя
+    user_states.pop(chat_id, None)  # Удаляем состояние
+
+    if chat_id not in user_tickets or not user_tickets[chat_id]:
+        bot.send_text(chat_id=chat_id, text="❌ У вас нет тикетов.")
         return
 
     keyboard = []
-    has_open_tickets = False
-
-    for ticket in tickets[chat_id]:
-        ticket_id = ticket["id"]
-        status = ticket["status"]
+    for ticket_id in user_tickets[chat_id]:
+        ticket = tickets[ticket_id]
+        btn_text = f"{ticket_id}: {ticket['subject']} ({ticket['status']})"
         
-        if close_mode and status != "Открыт":
-            continue
-            
-        subject = ticket["subject"]
-        deadline = ticket["deadline"]
-        row = []
-
-        if close_mode:
-            row.append({
-                "text": f"❌ Закрыть #{ticket_id}",
-                "callbackData": f"user_cmd_confirm_close_ticket_{ticket_id}"
-            })
-        else:
-            row.append({
-                "text": f"{ticket_id} - {subject} ({status}, до {deadline})",
-                "callbackData": f"user_cmd_view_ticket_{ticket_id}"
-            })
-            if status == "Открыт":
-                row.append({
-                    "text": "❌ Закрыть",
-                    "callbackData": f"user_cmd_confirm_close_ticket_{ticket_id}"
-                })
+        if ticket.get("ticket_type") == "personal":
+            btn_text += " [Личный]"
         
-        keyboard.append(row)
-        has_open_tickets = True
-
-    if not keyboard or (close_mode and not has_open_tickets):
-        bot.send_text(chat_id=chat_id, text="❌ Нет тикетов для закрытия." if close_mode else "У вас нет активных тикетов.")
-        return
-
+        keyboard.append([{
+            "text": btn_text,
+            "callbackData": f"view_ticket_{ticket_id}"
+        }])
+    
+    keyboard.append([back_button])
     bot.send_text(
         chat_id=chat_id,
-        text="🗑 Выберите тикет для закрытия:" if close_mode else "📋 Ваши открытые тикеты:",
-        inline_keyboard_markup=json.dumps(keyboard))
+        text="📋 Ваши тикеты:",
+        inline_keyboard_markup=json.dumps(keyboard)
+    )
 
+def show_user_tickets(chat_id):
+    if chat_id not in user_tickets or not user_tickets[chat_id]:
+        bot.send_text(chat_id=chat_id, text="❌ У вас нет тикетов.")
+        return
+
+    keyboard = []
+    for ticket_id in user_tickets[chat_id]:
+        ticket = tickets[ticket_id]
+        btn_text = f"{ticket_id}: {ticket['subject']} ({ticket['status']})"
+        
+        if ticket.get("ticket_type") == "personal":
+            btn_text += " [Личный]"
+        
+        keyboard.append([{
+            "text": btn_text,
+            "callbackData": f"view_ticket_{ticket_id}"
+        }])
+    
+    keyboard.append([back_button])
+    bot.send_text(
+        chat_id=chat_id,
+        text="📋 Ваши тикеты:",
+        inline_keyboard_markup=json.dumps(keyboard)
+    )
+
+def show_admin_tickets(chat_id):
+    if chat_id not in admin_tickets or not admin_tickets[chat_id]:
+        bot.send_text(chat_id=chat_id, text="❌ Вам не назначены тикеты.")
+        return
+
+    keyboard = []
+    for ticket_id in admin_tickets[chat_id]:
+        ticket = tickets[ticket_id]
+        keyboard.append([
+            {
+                "text": f"{ticket_id}: {ticket['subject']}",
+                "callbackData": f"view_ticket_{ticket_id}"
+            },
+            {
+                "text": "✅ Закрыть",
+                "callbackData": f"admin_cmd_close_ticket_{ticket_id}"
+            }
+        ])
+    
+    keyboard.append([back_button])
+    bot.send_text(
+        chat_id=chat_id,
+        text="📋 Назначенные вам тикеты:",
+        inline_keyboard_markup=json.dumps(keyboard)
+    )
+
+def show_ticket_info(chat_id, ticket_id):
+    if ticket_id not in tickets:
+        processing_time
+        bot.send_text(chat_id=chat_id, text="❌ Тикет не найден.")
+        return
+    
+    ticket = tickets[ticket_id]
+    info_text = (
+        f"ℹ️ Информация о тикете #{ticket_id}:\n\n"
+        f"🔹 Тема: {ticket['subject']}\n"
+        f"🔹 Описание: {ticket['description']}\n"
+        f"🔹 Дедлайн: {ticket['deadline']}\n"
+        f"🔹 Статус: {ticket['status']}\n"
+        f"🔹 Создан: {ticket['created_at']}\n"
+        f"🔹 Создатель: {ticket['creator']}\n"
+        f"🔹 Назначен: {ticket.get('assigned_to_name', 'Не назначен')}\n"
+        f"🔹 Закрыт: {ticket.get('closed_at', '—')}"
+    )
+    
+    keyboard = []
+    if chat_id in admin_users and ticket["status"] == "Открыт":
+        keyboard.append([{
+            "text": "✅ Закрыть тикет",
+            "callbackData": f"admin_cmd_close_ticket_{ticket_id}"
+        }])
+    
+    keyboard.append([back_button])
+    
+    processing_time
+    bot.send_text(
+        chat_id=chat_id,
+        text=info_text,
+        inline_keyboard_markup=json.dumps(keyboard)
+    )
+
+def close_ticket(chat_id, ticket_id):
+    if ticket_id not in tickets:
+        processing_time
+        bot.send_text(chat_id=chat_id, text="❌ Тикет не найден.")
+        return
+    
+    ticket = tickets[ticket_id]
+    
+    if ticket["status"] == "Закрыт":
+        processing_time
+        bot.send_text(chat_id=chat_id, text="❌ Этот тикет уже закрыт.")
+        return
+    
+    # Обновляем статус тикета
+    ticket["status"] = "Закрыт"
+    ticket["closed_at"] = datetime.now(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
+    ticket["closed_by"] = chat_id
+    
+    # Уведомляем создателя тикета
+    if ticket["creator"] in active_chats:
+        notification_text = (
+            f"🔔 Ваш тикет #{ticket_id} был закрыт!\n\n"
+            f"🔹 Тема: {ticket['subject']}\n"
+            f"🔹 Закрыт: {ticket['closed_at']}\n"
+            f"🔹 Закрыл: {admin_users.get(chat_id, 'Администратор')}"
+        )
+        bot.send_text(
+            chat_id=ticket["creator"],
+            text=notification_text,
+            inline_keyboard_markup=json.dumps([[back_button]])
+        )
+    
+    processing_time
+    bot.send_text(
+        chat_id=chat_id,
+        text=f"✅ Тикет #{ticket_id} успешно закрыт.",
+        inline_keyboard_markup=json.dumps([[back_button]])
+    )
+        
 def start_create_event(chat_id): #создание события
     user_states[chat_id] = {
         "state": "awaiting_event_name",
         "event_data": {}
     }
+    processing_time
     bot.send_text(
         chat_id=chat_id,
         text="🗓 Создание события\nУкажите название события:",
@@ -358,6 +565,7 @@ def process_event_creation(chat_id, message_text): #обработка и сох
     if user_states.get(chat_id, {}).get("state") == "awaiting_event_name":
         user_states[chat_id]["event_data"]["name"] = message_text
         user_states[chat_id]["state"] = "awaiting_event_description"
+        processing_time
         bot.send_text(
             chat_id=chat_id,
             text="📝 Теперь опишите событие подробно:",
@@ -367,6 +575,7 @@ def process_event_creation(chat_id, message_text): #обработка и сох
     elif user_states.get(chat_id, {}).get("state") == "awaiting_event_description":
         user_states[chat_id]["event_data"]["description"] = message_text
         user_states[chat_id]["state"] = "awaiting_event_datetime"
+        processing_time
         bot.send_text(
             chat_id=chat_id,
             text="⏰ Укажите дату и время события (в формате ДД.ММ.ГГГГ ЧЧ:ММ):",
@@ -381,6 +590,7 @@ def process_event_creation(chat_id, message_text): #обработка и сох
             user_states[chat_id]["event_data"]["datetime"] = event_datetime
 
             # Переходим к вводу времени напоминания
+            processing_time
             bot.send_text(
                 chat_id=chat_id,
                 text="⏰ Через сколько времени напомнить?\n"
@@ -392,6 +602,7 @@ def process_event_creation(chat_id, message_text): #обработка и сох
 
             user_states[chat_id]["state"] = "awaiting_event_reminder"
         except ValueError:
+            processing_time
             bot.send_text(
                 chat_id=chat_id,
                 text="❌ Неверный формат даты и времени. Пожалуйста, укажите в формате ДД.ММ.ГГГГ ЧЧ:ММ:"
@@ -399,6 +610,7 @@ def process_event_creation(chat_id, message_text): #обработка и сох
     elif user_states.get(chat_id, {}).get("state") == "awaiting_event_reminder":
         time_format_pattern = r"^\d+:\d{2}:\d{2}:\d{2}$"
         if not re.match(time_format_pattern, message_text):
+            processing_time
             bot.send_text(
                 chat_id=chat_id,
                 text="❌ Неверный формат времени напоминания.\n"
@@ -437,6 +649,7 @@ def process_event_creation(chat_id, message_text): #обработка и сох
                 f"🔔 Напомню за {days} дней {hours} часов {minutes} минут {seconds} секунд"
             )
 
+            processing_time
             bot.send_text(chat_id=chat_id, text=event_info,
                 inline_keyboard_markup=json.dumps([[back_button]])
             )
@@ -452,6 +665,7 @@ def process_event_creation(chat_id, message_text): #обработка и сох
             user_states.pop(chat_id, None)
         except Exception as e:
             print(e)
+            processing_time
             bot.send_text(
                 chat_id=chat_id,
                 text="❌ Неверный формат времени напоминания.\n"
@@ -473,6 +687,7 @@ def schedule_reminder(chat_id, event_id, event_name, reminder_time): #напом
 
 def show_my_events(chat_id): #события пользователя
     if chat_id not in events or not events[chat_id]:
+        processing_time
         bot.send_text(chat_id=chat_id, text="У вас нет запланированных событий.", 
             inline_keyboard_markup=json.dumps([[back_button]])
         )
@@ -489,6 +704,7 @@ def show_my_events(chat_id): #события пользователя
             f"   Статус: {event['status']}\n\n"
         )
     
+    processing_time
     bot.send_text(chat_id=chat_id, text=events_text, 
         inline_keyboard_markup=json.dumps([[back_button]])
     )
@@ -515,9 +731,10 @@ def show_help(chat_id): #действие при команде /help
         "/my_events - Посмотреть мои события\n"
         "🔹 Администрирование:\n"
         "/stats - Статистика использования бота\n"
-        "/broadcast - Рассылка сообщений (админы)\n\n"
+        "/broadcast - Рассылка сообщений\n\n"
         "Воспользуйтесь кнопками или введите команду вручную"
     )
+    processing_time
     bot.send_text(chat_id=chat_id, text=help_text)
     start_command_buttons(chat_id)
 
@@ -525,16 +742,20 @@ def cancel_current_dialog(chat_id): #???выход из диалога??? не �
     if chat_id in user_states:
         del user_states[chat_id]  # Полностью очищаем состояние
 
+    processing_time
     bot.send_text(chat_id=chat_id, text="❌ Вы вышли из текущего диалога.", 
         inline_keyboard_markup=json.dumps([[back_button]])
     )
 
 def show_admin_panel(chat_id): #панель администратора
+    processing_time
     start_command_buttons(chat_id)
     if chat_id not in admin_users:
+        processing_time
         bot.send_text(chat_id=chat_id, text="❌ У вас нет доступа к админ-панели.")
         return
     
+    processing_time
     bot.send_text(
         chat_id=chat_id,
         text="🛠 Админ-панель",
@@ -549,6 +770,7 @@ def show_admin_panel(chat_id): #панель администратора
 
 def start_broadcast(chat_id): #создание рассылки
     if chat_id not in admin_users:
+        processing_time
         bot.send_text(chat_id=chat_id, text="❌ У вас нет прав для рассылки.")
         return
     
@@ -556,6 +778,8 @@ def start_broadcast(chat_id): #создание рассылки
         "state": "awaiting_broadcast_message",
         "broadcast_data": {}
     }
+
+    processing_time
     bot.send_text(
         chat_id=chat_id,
         text="📢 Введите сообщение для рассылки всем пользователям:",
@@ -566,6 +790,7 @@ def start_broadcast(chat_id): #создание рассылки
 
 def process_broadcast(chat_id, message_text): #обработка и подтверждение рассылки
     if chat_id not in admin_users:
+        processing_time
         bot.send_text(chat_id=chat_id, text="❌ У вас нет прав для рассылки.")
         return
     
@@ -573,6 +798,7 @@ def process_broadcast(chat_id, message_text): #обработка и подтв�
     user_states[chat_id]["broadcast_data"]["message"] = message_text
     
     # Запрашиваем подтверждение
+    processing_time
     bot.send_text(
         chat_id=chat_id,
         text=f"✉️ Вы уверены, что хотите разослать это сообщение всем пользователям?\n\n{message_text}",
@@ -586,6 +812,7 @@ def process_broadcast(chat_id, message_text): #обработка и подтв�
 
 def send_broadcast(chat_id): #выполнение рассылки
     if chat_id not in admin_users:
+        processing_time
         bot.send_text(chat_id=chat_id, text="❌ У вас нет прав для рассылки.")
         return
     
@@ -595,6 +822,7 @@ def send_broadcast(chat_id): #выполнение рассылки
     # Отправляем сообщение всем активным чатам
     for user_chat in active_chats:
         try:
+            processing_time
             bot.send_text(
                 chat_id=user_chat,
                 text=f"📢 Важное сообщение от администратора:\n\n{message}",
@@ -602,16 +830,17 @@ def send_broadcast(chat_id): #выполнение рассылки
                     [back_button]
                 ])
             )
-            time.sleep(0.1)  # Небольшая задержка, чтобы не перегружать сервер
+            processing_time # Небольшая задержка, чтобы не перегружать сервер
         except Exception as e:
             print(f"Ошибка при отправке сообщения пользователю {user_chat}: {e}")
     
     # Уведомляем администратора
+    processing_time
     bot.send_text(
         chat_id=chat_id,
         text=f"✅ Рассылка успешно отправлена {len(active_chats)} пользователям.",
         inline_keyboard_markup=json.dumps([
-            [{"text": "⬅️ В админ-панель", "callbackData": "user_cmd_/admin_panel", "style": "secondary"}]
+            [{"text": "⬅️ Вернуться в панель администратора", "callbackData": "user_cmd_/admin_panel", "style": "secondary"}]
         ])
     )
     
@@ -622,6 +851,7 @@ def cancel_broadcast(chat_id): #отмена рассылки
     if chat_id in user_states and user_states[chat_id].get("state") == "awaiting_broadcast_message":
         del user_states[chat_id]
     
+    processing_time
     bot.send_text(
         chat_id=chat_id,
         text="❌ Рассылка отменена.",
@@ -638,6 +868,7 @@ def go_back(chat_id):
         
         # Создание тикета
         if state == "awaiting_ticket_description":
+            processing_time
             bot.send_text(
                 chat_id=chat_id,
                 text="🛠 Измените тему обращения:",
@@ -648,6 +879,7 @@ def go_back(chat_id):
         elif state == "awaiting_ticket_deadline":
             subject = state_info["ticket_data"].get("subject", "")
             description = state_info["ticket_data"].get("description", "")
+            processing_time
             bot.send_text(
                 chat_id=chat_id,
                 text=f"🛠 Тема: {subject}\n📝 Описание: {description}\n\nИзмените описание обращения:",
@@ -658,6 +890,7 @@ def go_back(chat_id):
         # Создание события
         elif state == "awaiting_event_description":
             name = state_info["event_data"].get("name", "")
+            processing_time
             bot.send_text(
                 chat_id=chat_id,
                 text=f"🗓 Измените название события:\n(было: {name})",
@@ -669,6 +902,7 @@ def go_back(chat_id):
             name = state_info["event_data"].get("name", "")
             description = state_info["event_data"].get("description", "")
             datetime_str = state_info["event_data"]["datetime"].strftime("%d.%m.%Y %H:%M")
+            processing_time
             bot.send_text(
                 chat_id=chat_id,
                 text=f"🗓 Название: {name}\n📝 Описание: {description}\n"
@@ -680,19 +914,35 @@ def go_back(chat_id):
         # Для всех необработанных состояний
         else:
             user_states.pop(chat_id, None)
+            processing_time
             start_command_buttons(chat_id)
 
     # Если есть контекст (просмотр разделов)
     elif chat_id in user_context:
         del user_context[chat_id]
+        processing_time
         start_command_buttons(chat_id)
 
     # Стандартный возврат в главное меню
     else:
+        processing_time
         start_command_buttons(chat_id)
 
 def process_command(chat_id, command):  # обрабатывает все команды
     command = command.lower().strip()
+
+    # Если пользователь ввел любую команду во время создания тикета - очищаем состояние
+    if chat_id in user_states and user_states[chat_id].get("state", "").startswith("awaiting_ticket"):
+        if not command.startswith("/support") and command not in ["/back", "/cancel"]:
+            del user_states[chat_id]  # Очищаем состояние создания тикета
+            bot.send_text(chat_id=chat_id, text="❌ Создание тикета отменено")
+    
+    # Очистка состояния создания события при вводе другой команды
+    if chat_id in user_states and user_states[chat_id].get("state", "").startswith("awaiting_event"):
+        if not command.startswith("/create_event") and command not in ["/back", "/cancel"]:
+            del user_states[chat_id]
+            bot.send_text(chat_id=chat_id, text="❌ Создание события отменено")
+            
     if command == "/start":
         send_welcome(chat_id)
     elif command == "/help":
@@ -714,11 +964,21 @@ def process_command(chat_id, command):  # обрабатывает все ком
     elif command == "/support":
         start_support_ticket(chat_id)
     elif command == "/my_tickets":
-        show_my_tickets(chat_id)
-    elif command == "/close_ticket":
-        bot.send_text(chat_id=chat_id, text="Введите ID тикета, который вы хотите закрыть:")
-        # Устанавливаем состояние пользователя в "ожидание ID тикета для закрытия"
-        user_states[chat_id] = {"state": "awaiting_ticket_id_to_close"}
+        if chat_id in admin_users:
+            # Администраторам показываем оба варианта через кнопки
+            bot.send_text(
+                chat_id=chat_id,
+                text="Выберите тип тикетов:",
+                inline_keyboard_markup=json.dumps([
+                    [
+                        {"text": "📌 Мои личные", "callbackData": "user_cmd_show_personal_tickets"},
+                        {"text": "💼 Назначенные мне", "callbackData": "user_cmd_show_assigned_tickets"}
+                    ],
+                    [back_button]
+                ])
+            )
+        else:
+            show_user_tickets(chat_id)
     elif command == "/create_event":
         start_create_event(chat_id)
     elif command == "/my_events":
@@ -731,76 +991,38 @@ def process_command(chat_id, command):  # обрабатывает все ком
         bot.send_text(chat_id=chat_id, text="Неизвестная команда. Введите /help")
 
 def simulate_user_message(chat_id, text): #команда от пользователя
-    time.sleep(0.3)
+    processing_time
     bot.send_text(
         chat_id=chat_id,
         text=f"Вы выбрали команду: {text}"
     )
-    time.sleep(0.3)
     process_command(chat_id, text)
 
 def message_cb(bot, event):
     chat_id = event.from_chat
-    text = event.text
-
-    # Добавляем чат в активные
+    text = event.text.strip()
     active_chats.add(chat_id)
     
-    # Проверка админских прав
-    if check_admin_access(chat_id, text):
+    # Если это команда (начинается с /) - обрабатываем как команду
+    if text.startswith('/'):
+        process_command(chat_id, text)
         return
     
+    # Если нет - проверяем состояние пользователя
     state = user_states.get(chat_id, {}).get("state", "")
     
-    # Обработка состояния рассылки
     if state == "awaiting_broadcast_message":
         process_broadcast(chat_id, text)
-        return
-
-    state = user_states.get(chat_id, {}).get("state", "")
-
-    # === Обработка закрытия тикета по ID ===
-    if state == "awaiting_ticket_id_to_close":
-        ticket_id = text.strip()  # Получаем ID тикета, введенный пользователем
-        ticket_found = False
-
-        if chat_id in tickets:
-            for ticket in tickets[chat_id]:
-                if ticket["id"] == ticket_id and ticket["status"] == "Открыт":
-                    ticket_found = True
-                    # Запрашиваем подтверждение закрытия тикета
-                    bot.send_text(
-                        chat_id=chat_id,
-                        text=f"Вы уверены, что хотите закрыть тикет #{ticket_id}?",
-                        inline_keyboard_markup=json.dumps([
-                            [
-                                {"text": "✅ Да", "callbackData": f"user_cmd_confirm_close_ticket_{ticket_id}"},
-                                {"text": "❌ Нет", "callbackData": "user_cmd_/cancel"}
-                            ]
-                        ])
-                    )
-                    # Очищаем состояние пользователя
-                    del user_states[chat_id]
-                    break
-
-        if not ticket_found:
-            bot.send_text(chat_id=chat_id, text="❌ Тикет с таким ID не найден или уже закрыт.")
-            del user_states[chat_id]  # Очищаем состояние пользователя
-
-    # === Обработка создания тикета ===
     elif state.startswith("awaiting_ticket"):
         process_ticket_creation(chat_id, text)
-
-    # === Обработка создания события ===
     elif state.startswith("awaiting_event"):
         process_event_creation(chat_id, text)
-
-    # === Если состояние не определено, обрабатываем как обычную команду ===
     else:
-        process_command(chat_id, text)
+        bot.send_text(chat_id=chat_id, text="Пожалуйста, используйте команды из меню")
+        start_command_buttons(chat_id)
 
 def button_cb(bot, event):
-    try:
+     try:
         bot.answer_callback_query(
             query_id=event.data['queryId'],
             text="⌛ Обработка..."
@@ -817,42 +1039,21 @@ def button_cb(bot, event):
 
             # 🔒 Обработка закрытия тикета
             if callback_data.startswith("confirm_close_ticket_"):
-                ticket_id = callback_data.replace("confirm_close_ticket_", "")
-                ticket_found = False
-
-                for idx, ticket in enumerate(tickets.get(chat_id, [])):
-                    if ticket["id"] == ticket_id and ticket["status"] == "Открыт":
-                        ticket["status"] = "Закрыт"
-                        ticket["closed_at"] = datetime.now(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
-                        bot.send_text(chat_id=chat_id, text=f"✅ Тикет #{ticket_id} успешно закрыт.")
-                        ticket_found = True
-                        break
-
-                if not ticket_found:
-                    bot.send_text(chat_id=chat_id, text="❌ Не удалось найти открытый тикет.")
-
-                show_my_tickets(chat_id)
+                ticket_id = callback_data.replace('admin_cmd_close_ticket_', '')
+                close_ticket(chat_id, ticket_id)
+                return
 
             # ℹ Просмотр информации о тикете
-            elif callback_data.startswith("view_ticket_"):
-                ticket_id = callback_data.replace("view_ticket_", "")
-                found = False
-                for ticket in tickets.get(chat_id, []):
-                    if ticket["id"] == ticket_id:
-                        info = (
-                            f"🔹 Номер: {ticket['id']}\n"
-                            f"🔹 Тема: {ticket['subject']}\n"
-                            f"🔹 Описание: {ticket['description']}\n"
-                            f"🔹 Дедлайн: {ticket['deadline']}\n"
-                            f"🔹 Статус: {ticket['status']}\n"
-                            f"🔹 Создан: {ticket['created_at']}\n"
-                            f"🔹 Закрыт: {ticket.get('closed_at', '—')}"
-                        )
-                        bot.send_text(chat_id=chat_id, text=f"ℹ️ Информация о тикете:\n\n{info}")
-                        found = True
-                        break
-                if not found:
-                    bot.send_text(chat_id=chat_id, text="❌ Тикет не найден.")
+            elif callback_data.startswith('view_ticket_'):
+                ticket_id = callback_data.replace('view_ticket_', '')
+                show_ticket_info(chat_id, ticket_id)
+                return
+            
+            # Обработка назначения тикета
+            if callback_data.startswith('assign_ticket_'):
+                admin_email = callback_data.replace('assign_ticket_', '')
+                assign_ticket_to_admin(chat_id, admin_email)
+                return
 
             # 🔄 Все остальные пользовательские команды
             else:
@@ -887,12 +1088,13 @@ def button_cb(bot, event):
             elif callback_data == "cancel_broadcast":
                 cancel_broadcast(chat_id)
 
-    except Exception as e:
+     except Exception as e:
         print(f"Ошибка обработки кнопки: {e}")
         bot.answer_callback_query(
             query_id=event.data.get('queryId', ''),
             text="❌ Ошибка обработки"
         )
+
 
 # Регистрация обработчиков
 bot.dispatcher.add_handler(MessageHandler(callback=message_cb))
