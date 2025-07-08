@@ -419,7 +419,7 @@ def show_user_tickets(chat_id):
 
     personal_tickets = [
         t for t in user_tickets.get(chat_id, []) 
-        if tickets.get(t, {}).get("ticket_type") == "personal"
+        if tickets.get(t, {}).get("creator") == chat_id  # Показываем только тикеты, созданные этим пользователем
     ]
 
     if not personal_tickets:
@@ -429,10 +429,18 @@ def show_user_tickets(chat_id):
     keyboard = []
     for ticket_id in personal_tickets:
         ticket = tickets[ticket_id]
-        keyboard.append([{
-            "text": f"{ticket_id}: {ticket['subject']} ({ticket['status']})",
-            "callbackData": f"view_ticket_{ticket_id}"
-        }])
+        row = [
+            {
+                "text": f"{ticket_id}: {ticket['subject']} ({ticket['status']})",
+                "callbackData": f"view_ticket_{ticket_id}"
+            }
+        ]
+        if ticket["status"] == "Открыт":  # Добавляем кнопку закрытия только для открытых тикетов
+            row.append({
+                "text": "✅ Закрыть",
+                "callbackData": f"close_ticket_{ticket_id}"
+            })
+        keyboard.append(row)
     
     keyboard.append([back_button])
     bot.send_text(
@@ -514,11 +522,8 @@ def close_ticket(chat_id, ticket_id):
     
     # Разрешаем закрывать:
     # 1. Администраторам
-    # 2. Создателю тикета, если он назначен себе
-    if chat_id not in admin_users and not (
-        ticket["creator"] == chat_id and 
-        ticket["assigned_to"] == chat_id
-    ):
+    # 2. Создателю тикета
+    if chat_id not in admin_users and ticket["creator"] != chat_id:
         bot.send_text(chat_id=chat_id, text="❌ Вы не можете закрыть этот тикет.")
         return
     
@@ -527,8 +532,8 @@ def close_ticket(chat_id, ticket_id):
     ticket["closed_at"] = datetime.now(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
     ticket["closed_by"] = chat_id
     
-    # Уведомляем создателя тикета
-    if ticket["creator"] in active_chats:
+    # Уведомляем создателя тикета (если закрыл не он сам)
+    if ticket["creator"] != chat_id and ticket["creator"] in active_chats:
         notification_text = (
             f"🔔 Ваш тикет #{ticket_id} был закрыт!\n\n"
             f"🔹 Тема: {ticket['subject']}\n"
@@ -1041,8 +1046,8 @@ def button_cb(bot, event):
             return
             
         # Обработка закрытия тикета
-        elif callback_data.startswith("admin_cmd_close_ticket_"):
-            ticket_id = callback_data.replace('admin_cmd_close_ticket_', '')
+        if callback_data.startswith('close_ticket_'):
+            ticket_id = callback_data.replace('close_ticket_', '')
             close_ticket(chat_id, ticket_id)
             return
 
