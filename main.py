@@ -129,15 +129,21 @@ def start_command_buttons(chat_id):
 # Добавляем обработку команды /my_stats
 def show_my_stats(chat_id):
     count = user_stats.get(chat_id, 0)
+    # Получаем количество открытых тикетов пользователя
+    user_open_tickets = len([
+        t for t in tickets.values() 
+        if t.get("creator") == chat_id and t.get("status") == "Открыт"
+    ])
+    
     bot.send_text(
         chat_id=chat_id,
         text=f"📊 Ваша статистика:\n\n"
              f"👤 Пользователь: {admin_users.get(chat_id, chat_id)}\n"
              f"📧 Email: {chat_id}\n"
-             f"🔢 Всего запросов: {count}",
+             f"🔢 Всего запросов: {count}\n"
+             f"🎫 Открытых тикетов: {user_open_tickets}",
         inline_keyboard_markup=json.dumps([[back_button]])
     )
-
 def receiving_admin_access(chat_id, message_text): #получение администраторских прав с помощью пароля (а надо ли?...)
     if message_text.strip() == adm_password:
         admin_users.add(chat_id)
@@ -793,7 +799,22 @@ def show_all_stats(chat_id):
     stats_text = "📊 Статистика всех пользователей:\n\n"
     for email, name in admin_users.items():
         count = user_stats.get(email, 0)
-        stats_text += f"📧 {email}: {count} запросов\n"
+        # Считаем открытые тикеты для каждого пользователя
+        open_tickets = len([
+            t for t in tickets.values() 
+            if t.get("creator") == email and t.get("status") == "Открыт"
+        ])
+        assigned_tickets = len([
+            t for t in tickets.values()
+            if t.get("assigned_to") == email and t.get("status") == "Открыт"
+        ])
+        
+        stats_text += (
+            f"👤 {name} ({email}):\n"
+            f"  • Запросов: {count}\n"
+            f"  • Создано тикетов: {open_tickets}\n"
+            f"  • Назначено тикетов: {assigned_tickets}\n\n"
+        )
 
     bot.send_text(
         chat_id=chat_id,
@@ -806,38 +827,37 @@ def show_user_stats_options(chat_id):
         bot.send_text(chat_id=chat_id, text="❌ Нет доступных пользователей для просмотра.")
         return
     
-    # Создаем кнопки для выбора пользователя из списка администраторов
     keyboard = []
-    
-    # Формируем ряды по 2 кнопки из списка администраторов
     admin_list = list(admin_users.items())
+    
     for i in range(0, len(admin_list), 2):
         row = []
-        # Добавляем первую кнопку в ряду
+        # Первая кнопка в ряду
         email, name = admin_list[i]
-        count = usage_stats.get(email, {}).get('count', 0) if usage_stats else 0
+        count = user_stats.get(email, 0)
+        open_tickets = len([t for t in tickets.values() if t.get("creator") == email and t.get("status") == "Открыт"])
         row.append({
-            "text": f"{name} ({count})",
+            "text": f"{name} ({count}|{open_tickets}🎫)",
             "callbackData": f"show_user_detail_{email}"
         })
         
-        # Добавляем вторую кнопку в ряду, если есть
+        # Вторая кнопка в ряду (если есть)
         if i+1 < len(admin_list):
             email, name = admin_list[i+1]
-            count = usage_stats.get(email, {}).get('count', 0) if usage_stats else 0
+            count = user_stats.get(email, 0)
+            open_tickets = len([t for t in tickets.values() if t.get("creator") == email and t.get("status") == "Открыт"])
             row.append({
-                "text": f"{name} ({count})",
+                "text": f"{name} ({count}|{open_tickets}🎫)",
                 "callbackData": f"show_user_detail_{email}"
             })
         
         keyboard.append(row)
     
-    # Добавляем кнопки навигации
-    keyboard.append([back_button, cancel_button])
+    keyboard.append([back_button])
     
     bot.send_text(
         chat_id=chat_id,
-        text="👥 Выберите пользователя для просмотра статистики:",
+        text="👥 Выберите пользователя (запросы|открытые тикеты):",
         inline_keyboard_markup=json.dumps(keyboard)
     )
 
@@ -865,14 +885,21 @@ def show_user_detail(chat_id, user_email):
         return
     
     name = admin_users[user_email]
-    count = usage_stats.get(user_email, {}).get('count', 0) if usage_stats else 0
+    count = user_stats.get(user_email, 0)
+    # Считаем тикеты пользователя
+    created_tickets = len([t for t in tickets.values() if t.get("creator") == user_email])
+    open_tickets = len([t for t in tickets.values() if t.get("creator") == user_email and t.get("status") == "Открыт"])
+    assigned_tickets = len([t for t in tickets.values() if t.get("assigned_to") == user_email and t.get("status") == "Открыт"])
     
     bot.send_text(
         chat_id=chat_id,
-        text=f"📊 Статистика пользователя:\n\n"
+        text=f"📊 Детальная статистика:\n\n"
              f"👤 Имя: {name}\n"
              f"📧 Email: {user_email}\n"
-             f"🔢 Всего запросов: {count}",
+             f"🔢 Всего запросов: {count}\n"
+             f"🎫 Всего создано тикетов: {created_tickets}\n"
+             f"🟢 Открытых тикетов: {open_tickets}\n"
+             f"📌 Назначено тикетов: {assigned_tickets}",
         inline_keyboard_markup=json.dumps([
             [{"text": "⬅️ Назад к списку", "callbackData": "admin_cmd_user_stats"}]
         ])
