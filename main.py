@@ -1011,7 +1011,7 @@ def cancel_broadcast(chat_id): #отмена рассылки
         chat_id=chat_id,
         text="❌ Рассылка отменена.",
         inline_keyboard_markup=json.dumps([
-            [{"text": "⬅️ В админ-панель", "callbackData": "user_cmd_/admin_panel", "style": "secondary"}]
+            [{"text": "⬅️ Назад", "callbackData": "user_cmd_/admin_panel", "style": "secondary"}]
         ])
     )
 
