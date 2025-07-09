@@ -11,6 +11,7 @@ TOKEN = "001.1806729577.0340071044:1011814127"  # токен бота
 
 ticket_counter = 1
 usage_stats = {}
+user_stats = {}
 
 #Ссылки и контакты
 TELEGRAM_CHANNEL = "https://t.me/IT_105Koderline"  # Ссылка на канал
@@ -92,59 +93,50 @@ def generate_ticket_id(): #генерация идентификатора ти�
     ticket_counter += 1
     return ticket_id
 
-def start_command_buttons(chat_id):  # Главное меню
-    # Если пользователь админ, показываем дополнительные кнопки
+def start_command_buttons(chat_id):
+    buttons = [
+        [
+            {"text": "📞 Контакты", "callbackData": "user_cmd_/contacts", "style": "primary"},
+            {"text": "📰 Новости", "callbackData": "user_cmd_/news", "style": "primary"},
+            {"text": "🏢 О компании", "callbackData": "user_cmd_/about", "style": "primary"}
+        ],
+        [
+            {"text": "📚 1С Документы", "callbackData": "user_cmd_/1c_docs", "style": "primary"},
+            {"text": "⭐ 1С Отзывы", "callbackData": "user_cmd_/1c_reviews", "style": "primary"}
+        ],
+        [
+            {"text": "🛟 Создать тикет", "callbackData": "user_cmd_/support", "style": "primary"},
+            {"text": "📋 Мои тикеты", "callbackData": "user_cmd_/my_tickets", "style": "primary"}
+        ],
+        [
+            {"text": "🗓 Создать событие", "callbackData": "user_cmd_/create_event", "style": "primary"},
+            {"text": "🗓 Мои события", "callbackData": "user_cmd_/my_events", "style": "primary"}
+        ],
+        [
+            {"text": "📊 Моя статистика", "callbackData": "user_cmd_/my_stats", "style": "primary"}
+        ]
+    ]
+
     if chat_id in admin_users:
-        bot.send_text(
-            chat_id=chat_id,
-            text="Выберите действие ниже:",
-            inline_keyboard_markup=json.dumps([
-                [
-                    {"text": "📞 Контакты", "callbackData": "user_cmd_/contacts", "style": "primary"},
-                    {"text": "📰 Новости", "callbackData": "user_cmd_/news", "style": "primary"},
-                    {"text": "🏢 О компании", "callbackData": "user_cmd_/about", "style": "primary"}
-                ],
-                [
-                    {"text": "📚 1С Документы", "callbackData": "user_cmd_/1c_docs", "style": "primary"},
-                    {"text": "⭐ 1С Отзывы", "callbackData": "user_cmd_/1c_reviews", "style": "primary"}
-                ],
-                [
-                    {"text": "🛟 Создать тикет", "callbackData": "user_cmd_/support", "style": "primary"},
-                    {"text": "📋 Мои тикеты", "callbackData": "user_cmd_/my_tickets", "style": "primary"}
-                ],
-                [
-                    {"text": "🗓 Создать событие", "callbackData": "user_cmd_/create_event", "style": "primary"},
-                    {"text": "🗓 Мои события", "callbackData": "user_cmd_/my_events", "style": "primary"}
-                ],
-                [
-                    {"text": "🛠 Администраторам", "callbackData": "user_cmd_/admin_panel", "style": "attention"}
-                ]
-            ]),
-        )
-    else:
-        bot.send_text(
-            chat_id=chat_id,
-            text="Выберите действие ниже:",
-            inline_keyboard_markup=json.dumps([
-                [
-                    {"text": "📞 Контакты", "callbackData": "user_cmd_/contacts", "style": "primary"},
-                    {"text": "📰 Новости", "callbackData": "user_cmd_/news", "style": "primary"},
-                    {"text": "🏢 О компании", "callbackData": "user_cmd_/about", "style": "primary"}
-                ],
-                [
-                    {"text": "📚 1С Документы", "callbackData": "user_cmd_/1c_docs", "style": "primary"},
-                    {"text": "⭐ 1С Отзывы", "callbackData": "user_cmd_/1c_reviews", "style": "primary"}
-                ],
-                [
-                    {"text": "🛟 Создать тикет", "callbackData": "user_cmd_/support", "style": "primary"},
-                    {"text": "📋 Мои тикеты", "callbackData": "user_cmd_/my_tickets", "style": "primary"}
-                ],
-                [
-                    {"text": "🗓 Создать событие", "callbackData": "user_cmd_/create_event", "style": "primary"},
-                    {"text": "🗓 Мои события", "callbackData": "user_cmd_/my_events", "style": "primary"}
-                ]
-            ]),
-        )
+        buttons.append([{"text": "🛠 Администраторам", "callbackData": "user_cmd_/admin_panel", "style": "attention"}])
+
+    bot.send_text(
+        chat_id=chat_id,
+        text="Выберите действие ниже:",
+        inline_keyboard_markup=json.dumps(buttons)
+    )
+
+# Добавляем обработку команды /my_stats
+def show_my_stats(chat_id):
+    count = user_stats.get(chat_id, 0)
+    bot.send_text(
+        chat_id=chat_id,
+        text=f"📊 Ваша статистика:\n\n"
+             f"👤 Пользователь: {admin_users.get(chat_id, chat_id)}\n"
+             f"📧 Email: {chat_id}\n"
+             f"🔢 Всего запросов: {count}",
+        inline_keyboard_markup=json.dumps([[back_button]])
+    )
 
 def receiving_admin_access(chat_id, message_text): #получение администраторских прав с помощью пароля (а надо ли?...)
     if message_text.strip() == adm_password:
@@ -778,14 +770,7 @@ def cancel_current_dialog(chat_id): #???выход из диалога??? не �
         inline_keyboard_markup=json.dumps([[back_button]])
     )
 
-def show_admin_panel(chat_id): #панель администратора
-    processing_time
-    start_command_buttons(chat_id)
-    if chat_id not in admin_users:
-        processing_time
-        bot.send_text(chat_id=chat_id, text="❌ У вас нет доступа к админ-панели.")
-        return
-    
+def show_admin_panel(chat_id):
     processing_time
     bot.send_text(
         chat_id=chat_id,
@@ -793,13 +778,27 @@ def show_admin_panel(chat_id): #панель администратора
         inline_keyboard_markup=json.dumps([
             [
                 {"text": "📢 Рассылка", "callbackData": "admin_cmd_broadcast", "style": "attention"},
-                {"text": "📊 Статистика", "callbackData": "admin_cmd_stats", "style": "primary"}
-            ],
-            [
-                {"text": "👤 Статистика пользователей", "callbackData": "admin_cmd_user_stats", "style": "primary"}
+                {"text": "📊 Вся статистика", "callbackData": "admin_cmd_all_stats", "style": "primary"}
             ],
             [back_button]
         ])
+    )
+
+# Добавляем функцию показа всей статистики для админов
+def show_all_stats(chat_id):
+    if chat_id not in admin_users:
+        bot.send_text(chat_id=chat_id, text="❌ У вас нет прав для просмотра статистики.")
+        return
+
+    stats_text = "📊 Статистика всех пользователей:\n\n"
+    for email, name in admin_users.items():
+        count = user_stats.get(email, 0)
+        stats_text += f"📧 {email}: {count} запросов\n"
+
+    bot.send_text(
+        chat_id=chat_id,
+        text=stats_text,
+        inline_keyboard_markup=json.dumps([[back_button]])
     )
 
 def show_user_stats_options(chat_id):
@@ -1056,13 +1055,13 @@ def go_back(chat_id): #кнопка "назад"
         processing_time
         start_command_buttons(chat_id)
 
-def process_command(chat_id, command):  # обрабатывает все команды
+def process_command(chat_id, command):
     command = command.lower().strip()
-
+    
     # Если пользователь ввел любую команду во время создания тикета - очищаем состояние
     if chat_id in user_states and user_states[chat_id].get("state", "").startswith("awaiting_ticket"):
         if not command.startswith("/support") and command not in ["/back", "/cancel"]:
-            del user_states[chat_id]  # Очищаем состояние создания тикета
+            del user_states[chat_id]
             bot.send_text(chat_id=chat_id, text="❌ Создание тикета отменено")
     
     # Очистка состояния создания события при вводе другой команды
@@ -1070,6 +1069,9 @@ def process_command(chat_id, command):  # обрабатывает все ком
         if not command.startswith("/create_event") and command not in ["/back", "/cancel"]:
             del user_states[chat_id]
             bot.send_text(chat_id=chat_id, text="❌ Создание события отменено")
+            
+    # Обновляем статистику при каждой команде
+    user_stats[chat_id] = user_stats.get(chat_id, 0) + 1
             
     if command == "/start":
         send_welcome(chat_id)
@@ -1093,7 +1095,6 @@ def process_command(chat_id, command):  # обрабатывает все ком
         start_support_ticket(chat_id)
     elif command == "/my_tickets":
         if chat_id in admin_users:
-            # Администраторам показываем оба варианта через кнопки
             bot.send_text(
                 chat_id=chat_id,
                 text="Выберите тип тикетов:",
@@ -1115,6 +1116,13 @@ def process_command(chat_id, command):  # обрабатывает все ком
         show_admin_panel(chat_id)
     elif command == "/broadcast":
         start_broadcast(chat_id)
+    elif command == "/my_stats":
+        show_my_stats(chat_id)
+    elif command == "/stats":
+        if chat_id in admin_users:
+            show_all_stats(chat_id)
+        else:
+            show_my_stats(chat_id)
     else:
         bot.send_text(chat_id=chat_id, text="Неизвестная команда. Введите /help")
 
@@ -1160,10 +1168,8 @@ def button_cb(bot, event):
         chat_id = event.from_chat
         active_chats.add(chat_id)
         
-        # Обновляем статистику использования
-        if chat_id not in usage_stats:
-            usage_stats[chat_id] = {"name": str(chat_id), "count": 0}
-        usage_stats[chat_id]["count"] += 1
+        # Обновляем статистику при каждом нажатии кнопки
+        user_stats[chat_id] = user_stats.get(chat_id, 0) + 1
 
         callback_data = event.data['callbackData']
 
@@ -1210,51 +1216,19 @@ def button_cb(bot, event):
             if command == "broadcast":
                 start_broadcast(chat_id)
             elif command == "stats":
-                stats_text = (
-                    f"📊 Статистика бота:\n\n"
-                    f"• Активных пользователей: {len(active_chats)}\n"
-                    f"• Создано тикетов: {sum(len(v) for v in tickets.values())}\n"
-                    f"• Создано событий: {sum(len(v) for v in events.values())}\n"
-                    f"• Всего запросов: {sum(stats['count'] for stats in usage_stats.values())}"
-                )
-                bot.send_text(
-                    chat_id=chat_id,
-                    text=stats_text,
-                    inline_keyboard_markup=json.dumps([
-                        [{"text": "⬅️ Назад", "callbackData": "user_cmd_/admin_panel", "style": "secondary"}]
-                    ])
-                )
-            elif command == "user_stats":
-                show_user_stats_options(chat_id)
+                show_all_stats(chat_id)
+            elif command == "all_stats":
+                show_all_stats(chat_id)
             elif command == "confirm_broadcast":
                 send_broadcast(chat_id)
             elif command == "cancel_broadcast":
                 cancel_broadcast(chat_id)
                 
-        # Просмотр детальной статистики пользователя
-        elif callback_data.startswith('show_user_detail_'):
-            user_id = callback_data.replace('show_user_detail_', '')
-            if user_id in usage_stats:
-                stats = usage_stats[user_id]
-                bot.send_text(
-                    chat_id=chat_id,
-                    text=f"📊 Статистика пользователя:\n\n"
-                         f"ID: {user_id}\n"
-                         f"Имя: {stats['name']}\n"
-                         f"Всего запросов: {stats['count']}",
-                    inline_keyboard_markup=json.dumps([
-                        [{"text": "⬅️ Назад к списку", "callbackData": "admin_cmd_user_stats"}]
-                    ])
-                )
-            else:
-                bot.send_text(chat_id=chat_id, text="❌ Пользователь не найден")
-        elif callback_data == "show_all_users_stats":
-            show_all_users_stats(chat_id)
-        elif callback_data.startswith('show_user_detail_'):
-            user_email = callback_data.replace('show_user_detail_', '')
-            show_user_detail(chat_id, user_email)
-        elif callback_data == "show_all_users_stats":
-            show_all_users_stats(chat_id)
+        # Просмотр статистики
+        elif callback_data == "user_cmd_/my_stats":
+            show_my_stats(chat_id)
+        elif callback_data == "admin_cmd_all_stats":
+            show_all_stats(chat_id)
 
     except Exception as e:
         print(f"Ошибка обработки кнопки: {e}")
