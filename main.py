@@ -93,7 +93,7 @@ def generate_ticket_id(): #генерация идентификатора ти�
     ticket_counter += 1
     return ticket_id
 
-def start_command_buttons(chat_id):
+def start_command_buttons(chat_id): #главное меню
     buttons = [
         [
             {"text": "📞 Контакты", "callbackData": "user_cmd_/contacts", "style": "primary"},
@@ -144,6 +144,7 @@ def show_my_stats(chat_id):
              f"🎫 Открытых тикетов: {user_open_tickets}",
         inline_keyboard_markup=json.dumps([[back_button]])
     )
+
 def receiving_admin_access(chat_id, message_text): #получение администраторских прав с помощью пароля (а надо ли?...)
     if message_text.strip() == adm_password:
         admin_users.add(chat_id)
@@ -325,7 +326,7 @@ def process_ticket_creation(chat_id, message_text): #обработка и со�
                 text="❌ Неверный формат даты. Пожалуйста, укажите дату в формате ДД.ММ.ГГГГ:"
             )
 
-def assign_ticket(chat_id, admin_id):
+def assign_ticket(chat_id, admin_id): #назначение тикета
         # Проверяем наличие данных тикета
     if chat_id not in user_states:
         bot.send_text(chat_id=chat_id, text="❌ Ошибка: данные тикета не найдены")
@@ -417,7 +418,7 @@ def assign_ticket(chat_id, admin_id):
     # Очищаем состояние
     user_states.pop(chat_id, None)
 
-def show_user_tickets(chat_id):
+def show_user_tickets(chat_id): #тикеты создателя
     # Получаем все тикеты, где текущий пользователь является создателем
     user_created_tickets = [
         t for t in tickets.values() 
@@ -776,7 +777,7 @@ def cancel_current_dialog(chat_id): #???выход из диалога??? не �
         inline_keyboard_markup=json.dumps([[back_button]])
     )
 
-def show_admin_panel(chat_id):
+def show_admin_panel(chat_id): #панель администратора
     processing_time
     bot.send_text(
         chat_id=chat_id,
@@ -1082,7 +1083,7 @@ def go_back(chat_id): #кнопка "назад"
         processing_time
         start_command_buttons(chat_id)
 
-def process_command(chat_id, command):
+def process_command(chat_id, command): #обработка всех команд
     command = command.lower().strip()
     
     # Если пользователь ввел любую команду во время создания тикета - очищаем состояние
@@ -1161,7 +1162,7 @@ def simulate_user_message(chat_id, text): #команда от пользова�
     )
     process_command(chat_id, text)
 
-def message_cb(bot, event):
+def message_cb(bot, event): #обработка сообщений
     chat_id = event.from_chat
     text = event.text.strip()
     active_chats.add(chat_id)
@@ -1184,7 +1185,7 @@ def message_cb(bot, event):
         bot.send_text(chat_id=chat_id, text="Пожалуйста, используйте команды из меню")
         start_command_buttons(chat_id)
 
-def button_cb(bot, event):
+def button_cb(bot, event): #обработка кнопок
     try:
         bot.answer_callback_query(
             query_id=event.data['queryId'],
