@@ -127,7 +127,6 @@ bot = Bot(token=TOKEN)
 user_states = {}
 events = {}   # Хранение созданных событий {chat_id: [список событий]}
 user_context = {}  # Хранит текущий контекст пользователя
-active_chats = set()  # Множество активных чатов с ботом
 user_tickets = {}  # Хранение тикетов пользователей {chat_id: [ticket_ids]}
 admin_users = {
     "i.osipova@bot-60.bizml.ru": "Осипова Ирина",
@@ -145,6 +144,7 @@ admin_users = {
 back_button = {"text": "⬅️ Назад", "callbackData": "user_cmd_/back"} #кнопка "назад"
 menu_button = {"text": "Меню", "callbackData": "user_cmd_/back", "style": "secondary"} #кнопка "меню"
 cancel_button = {"text": "❌ Отмена", "callbackData": "user_cmd_/cancel"} #кнопка "отмена"
+back_to_admin = {"text": "⬅️ Администраторам", "callbackData": "user_cmd_/admin_panel", "style": "primary"} #вернуться в панель администратора
 
 #время задержки ответа (симуляция обработки запроса)
 processing_time = time.sleep(0.2)
@@ -182,14 +182,14 @@ def start_command_buttons(chat_id): #главное меню
         inline_keyboard_markup=json.dumps(buttons)
     )
 
-def check_admin_access(chat_id): #получение администраторских прав
+def check_admin_access(chat_id): # получение администраторских прав
         if chat_id in admin_users:
             return True
         return False 
 
 
 #КОМАНДЫ ВСЕХ ПОЛЬЗОВАТЕЛЕЙ
-def send_welcome(chat_id):  # приветственное сообщение при /start
+def send_welcome(chat_id):  # приветственное сообщение
     welcome_text = (
         "👋 Добро пожаловать в бот компании «105 Кодерлайн»!\n\n"
         "Я ваш виртуальный помощник. Вот что я могу:\n"
@@ -203,7 +203,7 @@ def send_welcome(chat_id):  # приветственное сообщение п
     processing_time
     start_command_buttons(chat_id)
 
-def show_help(chat_id): #действие при команде /help
+def show_help(chat_id): # /help
     user_context[chat_id] = "help"
     help_text = (
         "📋 Список всех доступных команд:\n\n"
@@ -284,9 +284,8 @@ def send_contacts(chat_id):  # контактная информация
         ])
     )
     processing_time
-    start_command_buttons(chat_id)
 
-def send_1c_docs(chat_id):  #доки 1с
+def send_1c_docs(chat_id):  # доки 1с
     user_context[chat_id] = "docs_1c"
     docs_text = (
         "📚 Материалы по 1С:\n\n"
@@ -296,7 +295,7 @@ def send_1c_docs(chat_id):  #доки 1с
     processing_time
     bot.send_text(chat_id=chat_id, text=docs_text, inline_keyboard_markup=json.dumps([[back_button]]))
 
-def send_1c_reviews(chat_id):  #отзывы 1С
+def send_1c_reviews(chat_id):  # отзывы 1С
     user_context[chat_id] = "reviews_1c"
     reviews_text = f"⭐ Отзывы о наших внедрениях 1С:\n\n{REVIEWS}"
     processing_time
@@ -309,7 +308,7 @@ def send_1c_reviews(chat_id):  #отзывы 1С
         ])
     )
 
-def show_my_stats(chat_id): #просмотр своей статистики
+def show_my_stats(chat_id): # просмотр своей статистики
     try:
         with sqlite3.connect(DB_FILE) as conn:
             conn.row_factory = sqlite3.Row
@@ -376,7 +375,7 @@ def show_my_stats(chat_id): #просмотр своей статистики
             inline_keyboard_markup=json.dumps([[back_button]])
         )
 
-def go_back(chat_id): #"назад"
+def go_back(chat_id): # "назад"
      # Если есть активное состояние (создание тикета/события)
     if chat_id in user_states:
         state_info = user_states[chat_id]
@@ -443,7 +442,7 @@ def go_back(chat_id): #"назад"
         processing_time
         start_command_buttons(chat_id)
 
-def cancel_current_dialog(chat_id): #выход из диалога (при создании тикета и события)
+def cancel_current_dialog(chat_id): # выход из диалога (при создании тикета и события)
     if chat_id in user_states:
         del user_states[chat_id]  # Полностью очищаем состояние
 
@@ -453,7 +452,7 @@ def cancel_current_dialog(chat_id): #выход из диалога (при со
     )
 
 ## тикеты
-def get_next_ticket_number(): #получаем последний номер последнего ID тикета из БД
+def get_next_ticket_number(): # получаем последний номер последнего ID тикета из БД
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT MAX(id) FROM tickets")
@@ -464,15 +463,15 @@ def get_next_ticket_number(): #получаем последний номер п
         else:
             return 1
 
-ticket_counter = get_next_ticket_number() #глобальный счетчик тикетов
+ticket_counter = get_next_ticket_number() # глобальный счетчик тикетов
 
-def generate_ticket_id(): #генерация ID тикета
+def generate_ticket_id(): # генерация ID тикета
     global ticket_counter
     ticket_id = f"TKT-{ticket_counter:04d}"
     ticket_counter += 1
     return ticket_id
 
-def start_support_ticket(chat_id): #создание тикета
+def start_support_ticket(chat_id): # создание тикета
     user_states[chat_id] = {
         "state": "awaiting_ticket_subject",
         "ticket_data": {
@@ -487,7 +486,7 @@ def start_support_ticket(chat_id): #создание тикета
         inline_keyboard_markup=json.dumps([[back_button]])
     )
 
-def process_ticket_creation(chat_id, message_text): #обработка и сохранение тикета
+def process_ticket_creation(chat_id, message_text): # обработка и сохранение тикета
     # Проверка на отмену
     if message_text.strip().lower() in ("/cancel", "/back"):
         user_states.pop(chat_id, None)
@@ -562,7 +561,7 @@ def process_ticket_creation(chat_id, message_text): #обработка и со�
                 text="❌ Неверный формат даты. Пожалуйста, укажите дату в формате ДД.ММ.ГГГГ:"
             )
 
-def assign_ticket(chat_id, admin_id): #назначение тикета
+def assign_ticket(chat_id, admin_id): # назначение тикета
     if chat_id not in user_states:
         bot.send_text(chat_id=chat_id, text="❌ Ошибка: данные тикета не найдены")
         return
@@ -668,7 +667,7 @@ def assign_ticket(chat_id, admin_id): #назначение тикета
     # Очистка состояния
     user_states.pop(chat_id, None)
 
-def show_user_tickets(chat_id): #просмотр созданных тикетов (для администратора)
+def show_user_tickets(chat_id): # просмотр созданных тикетов (для администратора)
     try:
         conn = sqlite3.connect(DB_FILE)
         conn.row_factory = sqlite3.Row  
@@ -725,7 +724,7 @@ def show_user_tickets(chat_id): #просмотр созданных тикет�
         print(f"Ошибка базы данных: {e}")
         bot.send_text(chat_id=chat_id, text="❌ Ошибка при загрузке тикетов")
 
-def show_admin_tickets(chat_id): #просмотр назначенных тикетов (для администратора)
+def show_admin_tickets(chat_id): # просмотр назначенных тикетов (для администратора)
     try:
         conn = sqlite3.connect(DB_FILE)
         conn.row_factory = sqlite3.Row
@@ -771,7 +770,7 @@ def show_admin_tickets(chat_id): #просмотр назначенных тик
         print(f"Ошибка БД: {e}")
         bot.send_text(chat_id=chat_id, text="❌ Ошибка при загрузке тикетов")
 
-def show_ticket_info(chat_id, ticket_id): #просмотр подробной информации тикета
+def show_ticket_info(chat_id, ticket_id): # просмотр подробной информации тикета
     try:
         conn = sqlite3.connect(DB_FILE)
         conn.row_factory = sqlite3.Row
@@ -809,7 +808,8 @@ def show_ticket_info(chat_id, ticket_id): #просмотр подробной �
                 "callbackData": f"close_ticket_{ticket['id']}"
             }])
         
-        keyboard.append([back_button])
+       
+        keyboard.append([back_to_admin])
         
         bot.send_text(
             chat_id=chat_id,
@@ -820,7 +820,7 @@ def show_ticket_info(chat_id, ticket_id): #просмотр подробной �
         print(f"Ошибка базы данных: {e}")
         bot.send_text(chat_id=chat_id, text="❌ Ошибка при загрузке информации о тикете")
 
-def close_ticket(chat_id, ticket_id): #заркрытие тикета
+def close_ticket(chat_id, ticket_id): # закрытие тикета
     try:
         with sqlite3.connect(DB_FILE) as conn:
             conn.row_factory = sqlite3.Row
@@ -889,7 +889,7 @@ def close_ticket(chat_id, ticket_id): #заркрытие тикета
         bot.send_text(chat_id=chat_id, text="❌ Ошибка при закрытии тикета")
 
 ##события
-def start_create_event(chat_id): #создание события
+def start_create_event(chat_id): # создание события
     user_states[chat_id] = {
         "state": "awaiting_event_name",
         "event_data": {}
@@ -901,7 +901,7 @@ def start_create_event(chat_id): #создание события
         inline_keyboard_markup=json.dumps([[back_button, cancel_button]])
         )
 
-def process_event_creation(chat_id, message_text): #обработка и сохранение события
+def process_event_creation(chat_id, message_text): # обработка и сохранение события
 
     if user_states.get(chat_id, {}).get("state") == "awaiting_event_name":
         user_states[chat_id]["event_data"]["name"] = message_text
@@ -1001,7 +1001,7 @@ def process_event_creation(chat_id, message_text): #обработка и сох
                 text="❌ Неверный формат времени напоминания.\n"
                      "Используйте формат Д:ЧЧ:ММ:СС\n")
                
-def schedule_reminder(chat_id, event_id, event_name, reminder_time): #напоминание о событии
+def schedule_reminder(chat_id, event_id, event_name, reminder_time): # напоминание о событии
         now = datetime.now(MOSCOW_TZ)
         delay = (reminder_time - now).total_seconds()
         if delay > 0:
@@ -1015,7 +1015,7 @@ def schedule_reminder(chat_id, event_id, event_name, reminder_time): #напом
                 inline_keyboard_markup=json.dumps([[back_button]])
             )
 
-def show_my_events(chat_id): #события пользователя
+def show_my_events(chat_id): # события пользователя
     if chat_id not in events or not events[chat_id]:
         processing_time
         bot.send_text(chat_id=chat_id, text="У вас нет запланированных событий.", 
@@ -1041,7 +1041,7 @@ def show_my_events(chat_id): #события пользователя
 
 
 #АДМИНИСТРАТОРАМ
-def show_admin_panel(chat_id): #панель администратора
+def show_admin_panel(chat_id): # панель администратора
     processing_time
     bot.send_text(
         chat_id=chat_id,
@@ -1055,7 +1055,7 @@ def show_admin_panel(chat_id): #панель администратора
         ])
     )
 
-def show_all_stats(chat_id): #статистика по всем пользователям
+def show_all_stats(chat_id): # статистика по всем пользователям
     try:
         # Получаем статистику по всем пользователям
         stats = []
@@ -1154,7 +1154,7 @@ def show_all_stats(chat_id): #статистика по всем пользов�
             inline_keyboard_markup=json.dumps([[back_button]])
         )
 
-def start_broadcast(chat_id): #создание рассылки
+def start_broadcast(chat_id): # создание рассылки
     if chat_id not in admin_users:
         processing_time
         bot.send_text(chat_id=chat_id, text="❌ У вас нет прав для рассылки.")
@@ -1174,7 +1174,7 @@ def start_broadcast(chat_id): #создание рассылки
         ])
     )
 
-def process_broadcast(chat_id, message_text): #обработка и подтверждение рассылки
+def process_broadcast(chat_id, message_text): # обработка и подтверждение рассылки
     if chat_id not in admin_users:
         processing_time
         bot.send_text(chat_id=chat_id, text="❌ У вас нет прав для рассылки.")
@@ -1196,7 +1196,7 @@ def process_broadcast(chat_id, message_text): #обработка и подтв�
         ])
     )
 
-def send_broadcast(chat_id): #выполнение рассылки
+def send_broadcast(chat_id): # выполнение рассылки
     if chat_id not in admin_users:
         processing_time
         bot.send_text(chat_id=chat_id, text="❌ У вас нет прав для рассылки.")
@@ -1229,15 +1229,13 @@ def send_broadcast(chat_id): #выполнение рассылки
     bot.send_text(
         chat_id=chat_id,
         text=f"✅ Рассылка успешно отправлена {success_count} пользователям.",
-        inline_keyboard_markup=json.dumps([
-            [{"text": "⬅️ Вернуться в панель администратора", "callbackData": "user_cmd_/admin_panel", "style": "secondary"}]
-        ])
+        inline_keyboard_markup=json.dumps([[back_to_admin], [menu_button]])
     )
     
     # Очищаем состояние
     del user_states[chat_id]
 
-def cancel_broadcast(chat_id): #отмена рассылки
+def cancel_broadcast(chat_id): # отмена рассылки
     if chat_id in user_states and user_states[chat_id].get("state") == "awaiting_broadcast_message":
         del user_states[chat_id]
     
@@ -1252,7 +1250,7 @@ def cancel_broadcast(chat_id): #отмена рассылки
 
 
 #ДОПОЛНИТЕЛЬНЫЕ МЕТОДЫ
-def log_user_request(user_email, command): #сохранение истории запросов в БД
+def log_user_request(user_email, command): # сохранение истории запросов в БД
     try:
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
@@ -1265,7 +1263,7 @@ def log_user_request(user_email, command): #сохранение истории 
     except sqlite3.Error as e:
         print(f"Ошибка при записи запроса в историю: {e}")
 
-def get_request_stats(): #извлечение данных из БД для статистики
+def get_request_stats(): # извлечение данных из БД для статистики
     try:
         with sqlite3.connect(DB_FILE) as conn:
             conn.row_factory = sqlite3.Row
@@ -1319,7 +1317,7 @@ def get_request_stats(): #извлечение данных из БД для с�
         print(f"Ошибка при получении статистики пользователей: {e}")
         return []
 
-def add_active_chat(chat_id): #добавляем чат в активные и обновляем время последней активности
+def add_active_chat(chat_id): # добавляем чат в активные и обновляем время последней активности
     try:
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
@@ -1332,7 +1330,7 @@ def add_active_chat(chat_id): #добавляем чат в активные и 
     except sqlite3.Error as e:
         print(f"Ошибка при добавлении активного чата: {e}")
 
-def get_all_active_chats(): #возвращаем список активных чатов
+def get_all_active_chats(): # возвращаем список активных чатов
     try:
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
@@ -1342,7 +1340,7 @@ def get_all_active_chats(): #возвращаем список активных 
         print(f"Ошибка при получении активных чатов: {e}")
         return []
 
-def cleanup_inactive_chats(days=30): #удаляем чаты, которые не проявляли активность больше 30 дней
+def cleanup_inactive_chats(days=30): # удаляем чаты, которые не проявляли активность больше 30 дней
     try:
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
@@ -1356,7 +1354,7 @@ def cleanup_inactive_chats(days=30): #удаляем чаты, которые н
         print(f"Ошибка при очистке неактивных чатов: {e}")
         return 0
 
-def schedule_daily_cleanup(): #ежедневная очистка неактивных чатов
+def schedule_daily_cleanup(): # ежедневная очистка неактивных чатов
     while True:
         now = datetime.now(MOSCOW_TZ)
         
@@ -1383,7 +1381,7 @@ def schedule_daily_cleanup(): #ежедневная очистка неакти�
         print(f"Выполнена очистка неактивных чатов. Удалено: {deleted_count}")
 
 #ОБРАБОТЧИКИ
-def process_command(chat_id, command): #обработка всех команд
+def process_command(chat_id, command): # обработка всех команд
     command = command.lower().strip()
     
     log_user_request(chat_id, command)
@@ -1456,7 +1454,7 @@ def process_command(chat_id, command): #обработка всех команд
     else:
         bot.send_text(chat_id=chat_id, text="Неизвестная команда. Введите /help")
 
-def message_cb(bot, event): #обработка сообщений
+def message_cb(bot, event): # обработка сообщений
     chat_id = event.from_chat
     text = event.text.strip()
     add_active_chat(chat_id)
@@ -1479,7 +1477,7 @@ def message_cb(bot, event): #обработка сообщений
         bot.send_text(chat_id=chat_id, text="Пожалуйста, используйте команды из меню")
         start_command_buttons(chat_id)
 
-def button_cb(bot, event): #обработка кнопок
+def button_cb(bot, event): # обработка кнопок
     try:
         bot.answer_callback_query(
             query_id=event.data['queryId'],
