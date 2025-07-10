@@ -60,6 +60,20 @@ class Database:
                 ticket_type TEXT
             )
             ''')
+
+            # Новая таблица для истории запросов
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS request_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_email TEXT NOT NULL,
+                command TEXT NOT NULL,
+                timestamp TEXT NOT NULL
+            )
+            ''')
+            
+            # Индексы
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_history_user ON request_history(user_email)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_history_time ON request_history(timestamp)')
             
             # Индексы для ускорения запросов
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_creator ON tickets(creator)')
@@ -203,34 +217,69 @@ def start_command_buttons(chat_id): #главное меню
 def show_my_stats(chat_id):
     try:
         with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
-            # Общее количество тикетов
-            cursor.execute('SELECT COUNT(*) FROM tickets WHERE creator = ?', (chat_id,))
-            total_tickets = cursor.fetchone()[0]
+            # Получаем email текущего пользователя
+            user_email = chat_id
             
-            # Количество открытых тикетов
+            # Статистика запросов
             cursor.execute('''
-            SELECT COUNT(*) 
-            FROM tickets 
-            WHERE creator = ? AND status = 'Открыт'
-            ''', (chat_id,))
-            open_tickets = cursor.fetchone()[0]
-            
+                SELECT COUNT(*) as count FROM request_history 
+                WHERE user_email = ?
+            ''', (user_email,))
+            request_count = cursor.fetchone()['count'] or 0
+
+            # Статистика созданных тикетов
+            cursor.execute('''
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN status = 'Закрыт' THEN 1 ELSE 0 END) as closed
+                FROM tickets 
+                WHERE creator = ?
+            ''', (user_email,))
+            created = cursor.fetchone()
+            created_total = created['total'] or 0 if created else 0
+            created_closed = created['closed'] or 0 if created else 0
+
+            # Статистика назначенных открытых тикетов
+            cursor.execute('''
+                SELECT COUNT(*) as open_count
+                FROM tickets 
+                WHERE assigned_to = ? AND status = 'Открыт'
+            ''', (user_email,))
+            assigned_open = cursor.fetchone()['open_count'] or 0
+
+            # Формируем сообщение
+            message_text = (
+                "📊 Ваша персональная статистика:\n\n"
+                f"📧 {user_email}\n"
+                f"🔹 Количество запросов: {request_count}\n"
+                f"🔹 Созданные тикеты: {created_total}\n"
+                f"🟢 Закрытые тикеты: {created_closed}\n"
+                f"🔴 Открытые тикеты: {assigned_open}"
+            )
+
             bot.send_text(
                 chat_id=chat_id,
-                text=f"📊 Ваша статистика:\n\n"
-                     f"👤 Пользователь: {admin_users.get(chat_id, chat_id)}\n"
-                     f"📧 Email: {chat_id}\n"
-                     f"🔢 Всего запросов: {user_stats.get(chat_id, 0)}\n"
-                     f"🎫 Всего тикетов: {total_tickets}\n"
-                     f"🟢 Открытых тикетов: {open_tickets}",
+                text=message_text,
                 inline_keyboard_markup=json.dumps([[back_button]])
             )
-            
+
     except sqlite3.Error as e:
         print(f"Ошибка базы данных: {e}")
-        bot.send_text(chat_id=chat_id, text="❌ Ошибка при загрузке статистики")
+        bot.send_text(
+            chat_id=chat_id,
+            text="❌ Ошибка при загрузке вашей статистики",
+            inline_keyboard_markup=json.dumps([[back_button]])
+        )
+    except Exception as e:
+        print(f"Неожиданная ошибка: {e}")
+        bot.send_text(
+            chat_id=chat_id,
+            text="❌ Произошла непредвиденная ошибка",
+            inline_keyboard_markup=json.dumps([[back_button]])
+        )
 
 def receiving_admin_access(chat_id, message_text): #получение администраторских прав с помощью пароля (а надо ли?...)
     if message_text.strip() == adm_password:
@@ -953,49 +1002,102 @@ def show_admin_panel(chat_id): #панель администратора
 # Добавляем функцию показа всей статистики для админов
 def show_all_stats(chat_id):
     try:
-        conn = sqlite3.connect('tickets.db')
-        cursor = conn.cursor()
+        # Получаем статистику по всем пользователям
+        stats = []
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            # Получаем всех уникальных пользователей
+            cursor.execute('''
+                SELECT DISTINCT user_email as email FROM request_history
+                UNION
+                SELECT DISTINCT creator as email FROM tickets
+                UNION
+                SELECT DISTINCT assigned_to as email FROM tickets
+                WHERE assigned_to IS NOT NULL
+            ''')
+            users = [row['email'] for row in cursor.fetchall() if row['email']]
+
+            for user_email in users:
+                # Статистика запросов
+                cursor.execute('''
+                    SELECT COUNT(*) as count FROM request_history 
+                    WHERE user_email = ?
+                ''', (user_email,))
+                request_count = cursor.fetchone()['count'] or 0
+
+                # Статистика созданных тикетов
+                cursor.execute('''
+                    SELECT 
+                        COUNT(*) as total,
+                        SUM(CASE WHEN status = 'Закрыт' THEN 1 ELSE 0 END) as closed
+                    FROM tickets 
+                    WHERE creator = ?
+                ''', (user_email,))
+                created = cursor.fetchone()
+                created_total = created['total'] or 0 if created else 0
+                created_closed = created['closed'] or 0 if created else 0
+
+                # Статистика назначенных открытых тикетов
+                cursor.execute('''
+                    SELECT COUNT(*) as open_count
+                    FROM tickets 
+                    WHERE assigned_to = ? AND status = 'Открыт'
+                ''', (user_email,))
+                assigned_open = cursor.fetchone()['open_count'] or 0
+
+                stats.append({
+                    'email': user_email,
+                    'requests': request_count,
+                    'created_total': created_total,
+                    'created_closed': created_closed,
+                    'assigned_open': assigned_open
+                })
+
+        # Сортируем по количеству запросов (по убыванию)
+        stats.sort(key=lambda x: x['requests'], reverse=True)
+
+        # Формируем сообщение
+        message_text = "📊 Полная статистика по сотрудникам:\n\n"
         
-        # Получаем общую статистику
-        cursor.execute('SELECT COUNT(*) FROM tickets')
-        total_tickets = cursor.fetchone()[0]
-        
-        cursor.execute('SELECT COUNT(*) FROM tickets WHERE status = "Открыт"')
-        open_tickets = cursor.fetchone()[0]
-        
-        # Получаем статистику по пользователям
-        cursor.execute('''
-        SELECT creator, COUNT(*) as ticket_count
-        FROM tickets
-        GROUP BY creator
-        ORDER BY ticket_count DESC
-        ''')
-        user_stats = cursor.fetchall()
-        
-        stats_text = "📊 Общая статистика:\n\n"
-        stats_text += f"🔹 Всего тикетов: {total_tickets}\n"
-        stats_text += f"🔹 Открытых тикетов: {open_tickets}\n\n"
-        stats_text += "📌 Статистика по пользователям:\n"
-        
-        for user, count in user_stats:
-            stats_text += f"👤 {admin_users.get(user, user)}: {count} тикетов\n"
-        
+        for user in stats:
+            message_text += (
+                f"📧 {user['email']}\n"
+                f"🔹 Количество запросов: {user['requests']}\n"
+                f"🔹 Созданные тикеты: {user['created_total']}\n"
+                f"🟢 Закрытые тикеты: {user['created_closed']}\n"
+                f"🔴 Открытые тикеты: {user['assigned_open']}\n\n"
+            )
+
+        # Разбиваем длинное сообщение на части если нужно
+        max_length = 3000
+        if len(message_text) > max_length:
+            parts = [message_text[i:i+max_length] for i in range(0, len(message_text), max_length)]
+            for part in parts:
+                bot.send_text(chat_id=chat_id, text=part)
+                time.sleep(0.5)
+        else:
+            bot.send_text(
+                chat_id=chat_id,
+                text=message_text,
+                inline_keyboard_markup=json.dumps([[back_button]])
+            )
+
+    except sqlite3.Error as e:
+        print(f"Ошибка базы данных при получении статистики: {e}")
         bot.send_text(
             chat_id=chat_id,
-            text=stats_text,
+            text="❌ Произошла ошибка при получении статистики из базы данных.",
             inline_keyboard_markup=json.dumps([[back_button]])
         )
-        
-    except sqlite3.Error as e:
-        print(f"Ошибка БД при получении статистики: {e}")
+    except Exception as e:
+        print(f"Неожиданная ошибка в show_all_stats: {e}")
         bot.send_text(
             chat_id=chat_id,
-            text="❌ Ошибка при загрузке статистики."
+            text="❌ Произошла непредвиденная ошибка при формировании статистики.",
+            inline_keyboard_markup=json.dumps([[back_button]])
         )
-        
-    finally:
-        if conn:
-            conn.close()
 
 def show_user_stats_options(chat_id):
     if not admin_users:
@@ -1257,9 +1359,78 @@ def go_back(chat_id): #кнопка "назад"
         processing_time
         start_command_buttons(chat_id)
 
+def log_user_request(user_email, command):
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            timestamp = datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            cursor.execute(
+                'INSERT INTO request_history (user_email, command, timestamp) VALUES (?, ?, ?)',
+                (user_email, command, timestamp)
+            )
+            conn.commit()
+    except sqlite3.Error as e:
+        print(f"Ошибка при записи запроса в историю: {e}")
+
+def get_request_stats():
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Получаем всех пользователей, которые делали запросы или создавали тикеты
+            cursor.execute('''
+            SELECT DISTINCT user_email FROM request_history
+            UNION
+            SELECT DISTINCT creator FROM tickets
+            ''')
+            
+            users = [row['user_email'] for row in cursor.fetchall()]
+            
+            stats = []
+            for user_email in users:
+                if not user_email:
+                    continue
+                    
+                # Статистика запросов
+                cursor.execute('''
+                SELECT COUNT(*) as request_count 
+                FROM request_history 
+                WHERE user_email = ?
+                ''', (user_email,))
+                request_count = cursor.fetchone()['request_count']
+                
+                # Статистика тикетов
+                cursor.execute('''
+                SELECT 
+                    COUNT(*) as total_tickets,
+                    SUM(CASE WHEN status = 'Открыт' THEN 1 ELSE 0 END) as open_tickets,
+                    SUM(CASE WHEN status = 'Закрыт' THEN 1 ELSE 0 END) as closed_tickets
+                FROM tickets 
+                WHERE creator = ?
+                ''', (user_email,))
+                ticket_stats = cursor.fetchone()
+                
+                stats.append({
+                    'email': user_email,
+                    'request_count': request_count,
+                    'total_tickets': ticket_stats['total_tickets'],
+                    'open_tickets': ticket_stats['open_tickets'],
+                    'closed_tickets': ticket_stats['closed_tickets'],
+                    'name': admin_users.get(user_email, user_email)
+                })
+            
+            return sorted(stats, key=lambda x: x['request_count'], reverse=True)
+            
+    except sqlite3.Error as e:
+        print(f"Ошибка при получении статистики пользователей: {e}")
+        return []
+
 def process_command(chat_id, command): #обработка всех команд
     command = command.lower().strip()
     
+    log_user_request(chat_id, command)
+
     # Если пользователь ввел любую команду во время создания тикета - очищаем состояние
     if chat_id in user_states and user_states[chat_id].get("state", "").startswith("awaiting_ticket"):
         if not command.startswith("/support") and command not in ["/back", "/cancel"]:
