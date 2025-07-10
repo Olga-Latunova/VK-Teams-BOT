@@ -188,8 +188,8 @@ def start_command_buttons(chat_id): #главное меню
             {"text": "🏢 О компании", "callbackData": "user_cmd_/about", "style": "primary"}
         ],
         [
-            {"text": "📚 1С Документы", "callbackData": "user_cmd_/1c_docs", "style": "primary"},
-            {"text": "⭐ 1С Отзывы", "callbackData": "user_cmd_/1c_reviews", "style": "primary"}
+            {"text": "📚 1С Документы", "callbackData": "user_cmd_/docs_1c", "style": "primary"},
+            {"text": "⭐ 1С Отзывы", "callbackData": "user_cmd_/reviews_1c", "style": "primary"}
         ],
         [
             {"text": "🛟 Создать тикет", "callbackData": "user_cmd_/support", "style": "primary"},
@@ -366,7 +366,7 @@ def send_contacts(chat_id):  # контактная информация
     start_command_buttons(chat_id)
 
 def send_1c_docs(chat_id):  #доки 1с
-    user_context[chat_id] = "1c_docs"
+    user_context[chat_id] = "docs_1c"
     docs_text = (
         "📚 Материалы по 1С:\n\n"
         f"• Обучающие видеоматериалы для менеджера по продажам - {DOCS_VIDEO}\n"
@@ -376,7 +376,7 @@ def send_1c_docs(chat_id):  #доки 1с
     bot.send_text(chat_id=chat_id, text=docs_text, inline_keyboard_markup=json.dumps([[back_button]]))
 
 def send_1c_reviews(chat_id):  #отзывы 1С
-    user_context[chat_id] = "1c_reviews"
+    user_context[chat_id] = "reviews_1c"
     reviews_text = f"⭐ Отзывы о наших внедрениях 1С:\n\n{REVIEWS}"
     processing_time
     bot.send_text(
@@ -828,16 +828,6 @@ def process_event_creation(chat_id, message_text): #обработка и сох
 
     if user_states.get(chat_id, {}).get("state") == "awaiting_event_name":
         user_states[chat_id]["event_data"]["name"] = message_text
-        user_states[chat_id]["state"] = "awaiting_event_description"
-        processing_time
-        bot.send_text(
-            chat_id=chat_id,
-            text="📝 Теперь опишите событие подробно:",
-            inline_keyboard_markup=json.dumps([[back_button, cancel_button]])
-        )
-    
-    elif user_states.get(chat_id, {}).get("state") == "awaiting_event_description":
-        user_states[chat_id]["event_data"]["description"] = message_text
         user_states[chat_id]["state"] = "awaiting_event_datetime"
         processing_time
         bot.send_text(
@@ -908,7 +898,6 @@ def process_event_creation(chat_id, message_text): #обработка и сох
             event_info = (
                 f"✅ Событие создано!\n"
                 f"🔹 Название: {event_data['name']}\n"
-                f"🔹 Описание: {event_data['description']}\n"
                 f"🔹 Дата и время: {event_datetime.strftime('%d.%m.%Y %H:%M')}\n"
                 f"🔔 Напомню за {days} дней {hours} часов {minutes} минут {seconds} секунд"
             )
@@ -1002,7 +991,7 @@ def show_help(chat_id): #действие при команде /help
     bot.send_text(chat_id=chat_id, text=help_text)
     start_command_buttons(chat_id)
 
-def cancel_current_dialog(chat_id): #???выход из диалога??? не вижу удаления из списка активных чатов с ботом
+def cancel_current_dialog(chat_id): #выход из диалога
     if chat_id in user_states:
         del user_states[chat_id]  # Полностью очищаем состояние
 
@@ -1345,7 +1334,7 @@ def go_back(chat_id): #кнопка "назад"
             state_info["state"] = "awaiting_ticket_description"
 
         # Создание события
-        elif state == "awaiting_event_description":
+        elif state == "awaiting_event_datetime":
             name = state_info["event_data"].get("name", "")
             processing_time
             bot.send_text(
@@ -1357,12 +1346,11 @@ def go_back(chat_id): #кнопка "назад"
 
         elif state == "awaiting_event_reminder":
             name = state_info["event_data"].get("name", "")
-            description = state_info["event_data"].get("description", "")
             datetime_str = state_info["event_data"]["datetime"].strftime("%d.%m.%Y %H:%M")
             processing_time
             bot.send_text(
                 chat_id=chat_id,
-                text=f"🗓 Название: {name}\n📝 Описание: {description}\n"
+                text=f"🗓 Название: {name}\n📝"
                      f"📅 Дата и время: {datetime_str}\nИзмените дату и время события:",
                 inline_keyboard_markup=json.dumps([[back_button, cancel_button]])
             )
