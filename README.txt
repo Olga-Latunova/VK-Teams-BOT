@@ -4,6 +4,7 @@ linux
 
 После клонирования репозиторий необходимо вручную поместить файл .env, содержащий токен бота
 
+В терминале ввести:
 git clone https://github.com/Olga-Latunova/VK-Teams-BOT.git
 cd VK-Teams-BOT/
 python3 -m venv VKbot
