@@ -1,0 +1,3 @@
+pytz==2025.2
+mailru-im-bot==0.0.21
+python-dotenv
