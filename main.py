@@ -9,7 +9,7 @@ import threading
 import pytz  # библиотека для работы с часовыми поясами
 import re
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, time as dt_time, timedelta
 
 load_dotenv() 
 # Подключение к базе данных
@@ -51,6 +51,14 @@ class Database:
                 user_email TEXT NOT NULL,
                 command TEXT NOT NULL,
                 timestamp TEXT NOT NULL
+            )
+            ''')
+
+             # Таблица для активных чатов
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS active_chats (
+                chat_id TEXT PRIMARY KEY,
+                last_activity TEXT NOT NULL
             )
             ''')
             
@@ -178,6 +186,7 @@ def check_admin_access(chat_id): #получение администратор�
         if chat_id in admin_users:
             return True
         return False 
+
 
 #КОМАНДЫ ВСЕХ ПОЛЬЗОВАТЕЛЕЙ
 def send_welcome(chat_id):  # приветственное сообщение при /start
@@ -1181,7 +1190,7 @@ def process_broadcast(chat_id, message_text): #обработка и подтв�
         text=f"✉️ Вы уверены, что хотите разослать это сообщение всем пользователям?\n\n{message_text}",
         inline_keyboard_markup=json.dumps([
             [
-                {"text": "✅ Да, разослать", "callbackData": "admin_cmd_confirm_broadcast", "style": "attention"},
+                {"text": "✅ Да, разослать", "callbackData": "admin_cmd_confirm_broadcast", "style": "primary"},
                 {"text": "❌ Отмена", "callbackData": "admin_cmd_cancel_broadcast", "style": "secondary"}
             ]
         ])
@@ -1196,6 +1205,9 @@ def send_broadcast(chat_id): #выполнение рассылки
     broadcast_data = user_states[chat_id]["broadcast_data"]
     message = broadcast_data["message"]
     
+    active_chats = get_all_active_chats()
+    success_count = 0
+
     # Отправляем сообщение всем активным чатам
     for user_chat in active_chats:
         try:
@@ -1207,6 +1219,7 @@ def send_broadcast(chat_id): #выполнение рассылки
                     [back_button]
                 ])
             )
+            success_count += 1
             processing_time # Небольшая задержка, чтобы не перегружать сервер
         except Exception as e:
             print(f"Ошибка при отправке сообщения пользователю {user_chat}: {e}")
@@ -1215,7 +1228,7 @@ def send_broadcast(chat_id): #выполнение рассылки
     processing_time
     bot.send_text(
         chat_id=chat_id,
-        text=f"✅ Рассылка успешно отправлена {len(active_chats)} пользователям.",
+        text=f"✅ Рассылка успешно отправлена {success_count} пользователям.",
         inline_keyboard_markup=json.dumps([
             [{"text": "⬅️ Вернуться в панель администратора", "callbackData": "user_cmd_/admin_panel", "style": "secondary"}]
         ])
@@ -1236,6 +1249,7 @@ def cancel_broadcast(chat_id): #отмена рассылки
             [{"text": "⬅️ Назад", "callbackData": "user_cmd_/admin_panel", "style": "secondary"}]
         ])
     )
+
 
 #ДОПОЛНИТЕЛЬНЫЕ МЕТОДЫ
 def log_user_request(user_email, command): #сохранение истории запросов в БД
@@ -1304,6 +1318,69 @@ def get_request_stats(): #извлечение данных из БД для с�
     except sqlite3.Error as e:
         print(f"Ошибка при получении статистики пользователей: {e}")
         return []
+
+def add_active_chat(chat_id): #добавляем чат в активные и обновляем время последней активности
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            now = datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            cursor.execute('''
+            INSERT OR REPLACE INTO active_chats (chat_id, last_activity) 
+            VALUES (?, ?)
+            ''', (chat_id, now))
+            conn.commit()
+    except sqlite3.Error as e:
+        print(f"Ошибка при добавлении активного чата: {e}")
+
+def get_all_active_chats(): #возвращаем список активных чатов
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT chat_id FROM active_chats')
+            return [row[0] for row in cursor.fetchall()]
+    except sqlite3.Error as e:
+        print(f"Ошибка при получении активных чатов: {e}")
+        return []
+
+def cleanup_inactive_chats(days=30): #удаляем чаты, которые не проявляли активность больше 30 дней
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cutoff_date = (datetime.now(MOSCOW_TZ) - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+            cursor.execute('DELETE FROM active_chats WHERE last_activity < ?', (cutoff_date,))
+            deleted_count = cursor.rowcount
+            conn.commit()
+            print(f"Удалено {deleted_count} неактивных чатов")
+            return deleted_count
+    except sqlite3.Error as e:
+        print(f"Ошибка при очистке неактивных чатов: {e}")
+        return 0
+
+def schedule_daily_cleanup(): #ежедневная очистка неактивных чатов
+    while True:
+        now = datetime.now(MOSCOW_TZ)
+        
+        # Устанавливаем время, когда нужно выполнять очистку (например, 3:00 ночи)
+        cleanup_time = dt_time(3, 0)
+        
+        # Создаем datetime объект для следующей очистки
+        next_run = datetime.combine(now.date(), cleanup_time)
+        
+        # Если сегодняшнее время очистки уже прошло, планируем на завтра
+        if now.time() > cleanup_time:
+            next_run += timedelta(days=1)
+        
+        # Вычисляем сколько секунд осталось до следующего запуска
+        sleep_seconds = (next_run - now).total_seconds()
+        
+        print(f"Следующая очистка неактивных чатов в {next_run}")
+        
+        # Ждем до времени следующего запуска
+        time.sleep(sleep_seconds)
+        
+        # Выполняем очистку
+        deleted_count = cleanup_inactive_chats()
+        print(f"Выполнена очистка неактивных чатов. Удалено: {deleted_count}")
 
 #ОБРАБОТЧИКИ
 def process_command(chat_id, command): #обработка всех команд
@@ -1382,7 +1459,7 @@ def process_command(chat_id, command): #обработка всех команд
 def message_cb(bot, event): #обработка сообщений
     chat_id = event.from_chat
     text = event.text.strip()
-    active_chats.add(chat_id)
+    add_active_chat(chat_id)
     
     # Если это команда (начинается с /) - обрабатываем как команду
     if text.startswith('/'):
@@ -1411,7 +1488,7 @@ def button_cb(bot, event): #обработка кнопок
         time.sleep(0.1)
 
         chat_id = event.from_chat
-        active_chats.add(chat_id)
+        add_active_chat(chat_id)
         
         # Обновляем статистику при каждом нажатии кнопки
         user_stats[chat_id] = user_stats.get(chat_id, 0) + 1
@@ -1490,3 +1567,10 @@ bot.dispatcher.add_handler(BotButtonCommandHandler(callback=button_cb))
 print("Бот запущен...")
 bot.start_polling()
 bot.idle()
+
+#планировщик очистки неактивных чатов
+cleanup_thread = threading.Thread(
+    target=schedule_daily_cleanup,
+    daemon=True  # Поток завершится при завершении основного потока
+)
+cleanup_thread.start()
