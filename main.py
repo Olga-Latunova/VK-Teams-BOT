@@ -92,8 +92,6 @@ def generate_ticket_id():
     ticket_counter += 1
     return ticket_id
     
-
-ticket_counter = 1
 usage_stats = {}
 user_stats = {}
 
@@ -160,9 +158,6 @@ admin_users = {
     "aabrosimov@koderline.com": "Абросимов Артём",
     "mkozhemyak@koderline.com": "Кожемяк Максим"
 }  # Словарь администраторов {email: имя}
-#"o.latunova@bot-60.bizml.ru": "Латунова Ольга",
-# Глобальный счетчик тикетов
-ticket_counter = 1
 
 #общие кнопки для всех состояний
 back_button = {"text": "⬅️ Назад", "callbackData": "user_cmd_/back"} #кнопка "назад"
@@ -171,8 +166,6 @@ cancel_button = {"text": "❌ Отмена", "callbackData": "user_cmd_/cancel"}
 
 #время задержки ответа (симуляция обработки запроса)
 processing_time = time.sleep(0.2)
-
-
 
 def start_command_buttons(chat_id): #главное меню
     buttons = [
@@ -239,6 +232,7 @@ def show_my_stats(chat_id):
     except sqlite3.Error as e:
         print(f"Ошибка базы данных: {e}")
         bot.send_text(chat_id=chat_id, text="❌ Ошибка при загрузке статистики")
+
 def receiving_admin_access(chat_id, message_text): #получение администраторских прав с помощью пароля (а надо ли?...)
     if message_text.strip() == adm_password:
         admin_users.add(chat_id)
@@ -360,7 +354,6 @@ def start_support_ticket(chat_id): #создание тикета
         text="🛠 Создание тикета\n\nУкажите тему обращения:",
         inline_keyboard_markup=json.dumps([[back_button]])
     )
-
 
 def process_ticket_creation(chat_id, message_text): #обработка и сохранение тикета
     # Проверка на отмену
@@ -630,6 +623,7 @@ def show_admin_tickets(chat_id):
     except sqlite3.Error as e:
         print(f"Ошибка БД: {e}")
         bot.send_text(chat_id=chat_id, text="❌ Ошибка при загрузке тикетов")
+
 def show_ticket_info(chat_id, ticket_id):
     try:
             conn = sqlite3.connect(DB_FILE)
@@ -676,7 +670,6 @@ def show_ticket_info(chat_id, ticket_id):
     except sqlite3.Error as e:
         print(f"Ошибка базы данных: {e}")
         bot.send_text(chat_id=chat_id, text="❌ Ошибка при загрузке информации о тикете")
-
 
 def delete_ticket(ticket_id):
     conn = sqlite3.connect('tickets.db')
