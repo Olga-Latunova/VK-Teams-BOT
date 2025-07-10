@@ -16,27 +16,10 @@ load_dotenv()
 conn = sqlite3.connect('tickets.db')
 cursor = conn.cursor()
 
-# Выбираем все данные из таблицы tickets
-cursor.execute("SELECT * FROM tickets")
-
-# Получаем заголовки столбцов
-columns = [description[0] for description in cursor.description]
-
-# Выводим заголовки
-print(" | ".join(columns))
-
-# Выводим строки
-for row in cursor.fetchall():
-    print(" | ".join(str(cell) for cell in row))
-
-# Закрываем соединение
-conn.close()
 # Создаем соединение с базой данных
+DB_FILE = 'Datebase.db' 
 
-DB_FILE = 'tickets.db' 
 
-TOKEN = os.getenv("VK_API_TOKEN")  # токен бота
-# Удалите старую функцию init_db() и оставьте только:
 class Database:
     @staticmethod
     def init_db(): #инициализация структуры БД
@@ -85,28 +68,10 @@ class Database:
 # Инициализация БД
 Database.init_db()
 
-# Получаем следующий номер тикета из БД
-def get_next_ticket_number():
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT MAX(id) FROM tickets")
-        result = cursor.fetchone()[0]
-        if result:
-            last_num = int(result.split('-')[1])
-            return last_num + 1
-        else:
-            return 1
-
-ticket_counter = get_next_ticket_number()
-
-def generate_ticket_id():
-    global ticket_counter
-    ticket_id = f"TKT-{ticket_counter:04d}"
-    ticket_counter += 1
-    return ticket_id
-    
 usage_stats = {}
 user_stats = {}
+
+TOKEN = os.getenv("VK_API_TOKEN")  # токен бота
 
 #Ссылки и контакты
 TELEGRAM_CHANNEL = "https://t.me/IT_105Koderline"  # Ссылка на канал
@@ -150,11 +115,10 @@ MOSCOW_TZ = pytz.timezone('Europe/Moscow')
 
 bot = Bot(token=TOKEN)
 
-# Состояния для обработки тикетов
+# Списки и словари
 user_states = {}
 events = {}   # Хранение созданных событий {chat_id: [список событий]}
 user_context = {}  # Хранит текущий контекст пользователя
-admin_users = set()  # Множество пользователей с админскими правами
 active_chats = set()  # Множество активных чатов с ботом
 user_tickets = {}  # Хранение тикетов пользователей {chat_id: [ticket_ids]}
 admin_users = {
@@ -210,79 +174,12 @@ def start_command_buttons(chat_id): #главное меню
         inline_keyboard_markup=json.dumps(buttons)
     )
 
-# Добавляем обработку команды /my_stats
-def show_my_stats(chat_id):
-    try:
-        with sqlite3.connect(DB_FILE) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            
-            # Получаем email текущего пользователя
-            user_email = chat_id
-            
-            # Статистика запросов
-            cursor.execute('''
-                SELECT COUNT(*) as count FROM request_history 
-                WHERE user_email = ?
-            ''', (user_email,))
-            request_count = cursor.fetchone()['count'] or 0
-
-            # Статистика созданных тикетов
-            cursor.execute('''
-                SELECT 
-                    COUNT(*) as total,
-                    SUM(CASE WHEN status = 'Закрыт' THEN 1 ELSE 0 END) as closed
-                FROM tickets 
-                WHERE creator = ?
-            ''', (user_email,))
-            created = cursor.fetchone()
-            created_total = created['total'] or 0 if created else 0
-            created_closed = created['closed'] or 0 if created else 0
-
-            # Статистика назначенных открытых тикетов
-            cursor.execute('''
-                SELECT COUNT(*) as open_count
-                FROM tickets 
-                WHERE assigned_to = ? AND status = 'Открыт'
-            ''', (user_email,))
-            assigned_open = cursor.fetchone()['open_count'] or 0
-
-            # Формируем сообщение
-            message_text = (
-                "📊 Ваша персональная статистика:\n\n"
-                f"📧 {user_email}\n"
-                f"🔹 Количество запросов: {request_count}\n"
-                f"🔹 Созданные тикеты: {created_total}\n"
-                f"🟢 Закрытые тикеты: {created_closed}\n"
-                f"🔴 Открытые тикеты: {assigned_open}"
-            )
-
-            bot.send_text(
-                chat_id=chat_id,
-                text=message_text,
-                inline_keyboard_markup=json.dumps([[back_button]])
-            )
-
-    except sqlite3.Error as e:
-        print(f"Ошибка базы данных: {e}")
-        bot.send_text(
-            chat_id=chat_id,
-            text="❌ Ошибка при загрузке вашей статистики",
-            inline_keyboard_markup=json.dumps([[back_button]])
-        )
-    except Exception as e:
-        print(f"Неожиданная ошибка: {e}")
-        bot.send_text(
-            chat_id=chat_id,
-            text="❌ Произошла непредвиденная ошибка",
-            inline_keyboard_markup=json.dumps([[back_button]])
-        )
-
 def check_admin_access(chat_id): #получение администраторских прав
-    if chat_id in admin_users:
-        return True
-    return False
+        if chat_id in admin_users:
+            return True
+        return False 
 
+#КОМАНДЫ ВСЕХ ПОЛЬЗОВАТЕЛЕЙ
 def send_welcome(chat_id):  # приветственное сообщение при /start
     welcome_text = (
         "👋 Добро пожаловать в бот компании «105 Кодерлайн»!\n\n"
@@ -295,6 +192,35 @@ def send_welcome(chat_id):  # приветственное сообщение п
     )
     bot.send_text(chat_id=chat_id, text=welcome_text)
     processing_time
+    start_command_buttons(chat_id)
+
+def show_help(chat_id): #действие при команде /help
+    user_context[chat_id] = "help"
+    help_text = (
+        "📋 Список всех доступных команд:\n\n"
+        "🔹 Основные команды:\n"
+        "/news - Последние новости компании\n"
+        "/about - Информация о компании\n"
+        "/contacts - Контактные данные\n"
+        "/cancel - Прервать текущий диалог\n"
+        "/back - Вернуться назад\n\n"
+        "🔹 1С материалы:\n"
+        "/docs_1c - Документация и материалы по 1С\n"
+        "/reviews_1c - Отзывы о наших внедрениях 1С\n\n"
+        "🔹 Поддержка:\n"
+        "/support - Создать новый тикет\n"
+        "/my_tickets - Просмотреть мои тикеты\n"
+        "/close_ticket - Закрыть тикет\n\n"
+        "🔹 События:\n"
+        "/create_event - Создать новое событие\n"
+        "/my_events - Посмотреть мои события\n"
+        "🔹 Администрирование:\n"
+        "/stats - Статистика использования бота\n"
+        "/broadcast - Рассылка сообщений\n\n"
+        "Воспользуйтесь кнопками или введите команду вручную"
+    )
+    processing_time
+    bot.send_text(chat_id=chat_id, text=help_text)
     start_command_buttons(chat_id)
 
 def send_news(chat_id):  # новости
@@ -373,6 +299,169 @@ def send_1c_reviews(chat_id):  #отзывы 1С
             [back_button]
         ])
     )
+
+def show_my_stats(chat_id): #просмотр своей статистики
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Получаем email текущего пользователя
+            user_email = chat_id
+            
+            # Статистика запросов
+            cursor.execute('''
+                SELECT COUNT(*) as count FROM request_history 
+                WHERE user_email = ?
+            ''', (user_email,))
+            request_count = cursor.fetchone()['count'] or 0
+
+            # Статистика созданных тикетов
+            cursor.execute('''
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN status = 'Закрыт' THEN 1 ELSE 0 END) as closed
+                FROM tickets 
+                WHERE creator = ?
+            ''', (user_email,))
+            created = cursor.fetchone()
+            created_total = created['total'] or 0 if created else 0
+            created_closed = created['closed'] or 0 if created else 0
+
+            # Статистика назначенных открытых тикетов
+            cursor.execute('''
+                SELECT COUNT(*) as open_count
+                FROM tickets 
+                WHERE assigned_to = ? AND status = 'Открыт'
+            ''', (user_email,))
+            assigned_open = cursor.fetchone()['open_count'] or 0
+
+            # Формируем сообщение
+            message_text = (
+                "📊 Ваша персональная статистика:\n\n"
+                f"📧 {user_email}\n"
+                f"🔹 Количество запросов: {request_count}\n"
+                f"🔹 Созданные тикеты: {created_total}\n"
+                f"🟢 Закрытые тикеты: {created_closed}\n"
+                f"🔴 Открытые тикеты: {assigned_open}"
+            )
+
+            bot.send_text(
+                chat_id=chat_id,
+                text=message_text,
+                inline_keyboard_markup=json.dumps([[back_button]])
+            )
+
+    except sqlite3.Error as e:
+        print(f"Ошибка базы данных: {e}")
+        bot.send_text(
+            chat_id=chat_id,
+            text="❌ Ошибка при загрузке вашей статистики",
+            inline_keyboard_markup=json.dumps([[back_button]])
+        )
+    except Exception as e:
+        print(f"Неожиданная ошибка: {e}")
+        bot.send_text(
+            chat_id=chat_id,
+            text="❌ Произошла непредвиденная ошибка",
+            inline_keyboard_markup=json.dumps([[back_button]])
+        )
+
+def go_back(chat_id): #"назад"
+     # Если есть активное состояние (создание тикета/события)
+    if chat_id in user_states:
+        state_info = user_states[chat_id]
+        state = state_info.get("state", "")
+        
+        # Создание тикета
+        if state == "awaiting_ticket_description":
+            processing_time
+            bot.send_text(
+                chat_id=chat_id,
+                text="🛠 Измените тему обращения:",
+                inline_keyboard_markup=json.dumps([[back_button, cancel_button]])
+            )
+            state_info["state"] = "awaiting_ticket_subject"
+
+        elif state == "awaiting_ticket_deadline":
+            subject = state_info["ticket_data"].get("subject", "")
+            description = state_info["ticket_data"].get("description", "")
+            processing_time
+            bot.send_text(
+                chat_id=chat_id,
+                text=f"🛠 Тема: {subject}\n📝 Описание: {description}\n\nИзмените описание обращения:",
+                inline_keyboard_markup=json.dumps([[back_button, cancel_button]])
+            )
+            state_info["state"] = "awaiting_ticket_description"
+
+        # Создание события
+        elif state == "awaiting_event_datetime":
+            name = state_info["event_data"].get("name", "")
+            processing_time
+            bot.send_text(
+                chat_id=chat_id,
+                text=f"🗓 Измените название события:\n(было: {name})",
+                inline_keyboard_markup=json.dumps([[back_button, cancel_button]])
+            )
+            state_info["state"] = "awaiting_event_name"
+
+        elif state == "awaiting_event_reminder":
+            name = state_info["event_data"].get("name", "")
+            datetime_str = state_info["event_data"]["datetime"].strftime("%d.%m.%Y %H:%M")
+            processing_time
+            bot.send_text(
+                chat_id=chat_id,
+                text=f"🗓 Название: {name}\n📝"
+                     f"📅 Дата и время: {datetime_str}\nИзмените дату и время события:",
+                inline_keyboard_markup=json.dumps([[back_button, cancel_button]])
+            )
+            state_info["state"] = "awaiting_event_datetime"
+
+        # Для всех необработанных состояний
+        else:
+            user_states.pop(chat_id, None)
+            processing_time
+            start_command_buttons(chat_id)
+
+    # Если есть контекст (просмотр разделов)
+    elif chat_id in user_context:
+        del user_context[chat_id]
+        processing_time
+        start_command_buttons(chat_id)
+
+    # Стандартный возврат в главное меню
+    else:
+        processing_time
+        start_command_buttons(chat_id)
+
+def cancel_current_dialog(chat_id): #выход из диалога (при создании тикета и события)
+    if chat_id in user_states:
+        del user_states[chat_id]  # Полностью очищаем состояние
+
+    processing_time
+    bot.send_text(chat_id=chat_id, text="❌ Вы вышли из текущего диалога.", 
+        inline_keyboard_markup=json.dumps([[back_button]])
+    )
+
+## тикеты
+def get_next_ticket_number(): #получаем последний номер последнего ID тикета из БД
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT MAX(id) FROM tickets")
+        result = cursor.fetchone()[0]
+        if result:
+            last_num = int(result.split('-')[1])
+            return last_num + 1
+        else:
+            return 1
+
+ticket_counter = get_next_ticket_number() #глобальный счетчик тикетов
+
+def generate_ticket_id(): #генерация ID тикета
+    global ticket_counter
+    ticket_id = f"TKT-{ticket_counter:04d}"
+    ticket_counter += 1
+    return ticket_id
 
 def start_support_ticket(chat_id): #создание тикета
     user_states[chat_id] = {
@@ -464,7 +553,7 @@ def process_ticket_creation(chat_id, message_text): #обработка и со�
                 text="❌ Неверный формат даты. Пожалуйста, укажите дату в формате ДД.ММ.ГГГГ:"
             )
 
-def assign_ticket(chat_id, admin_id):
+def assign_ticket(chat_id, admin_id): #назначение тикета
     if chat_id not in user_states:
         bot.send_text(chat_id=chat_id, text="❌ Ошибка: данные тикета не найдены")
         return
@@ -570,7 +659,7 @@ def assign_ticket(chat_id, admin_id):
     # Очистка состояния
     user_states.pop(chat_id, None)
 
-def show_user_tickets(chat_id):
+def show_user_tickets(chat_id): #просмотр созданных тикетов (для администратора)
     try:
         conn = sqlite3.connect(DB_FILE)
         conn.row_factory = sqlite3.Row  
@@ -627,7 +716,7 @@ def show_user_tickets(chat_id):
         print(f"Ошибка базы данных: {e}")
         bot.send_text(chat_id=chat_id, text="❌ Ошибка при загрузке тикетов")
 
-def show_admin_tickets(chat_id):
+def show_admin_tickets(chat_id): #просмотр назначенных тикетов (для администратора)
     try:
         conn = sqlite3.connect(DB_FILE)
         conn.row_factory = sqlite3.Row
@@ -673,7 +762,7 @@ def show_admin_tickets(chat_id):
         print(f"Ошибка БД: {e}")
         bot.send_text(chat_id=chat_id, text="❌ Ошибка при загрузке тикетов")
 
-def show_ticket_info(chat_id, ticket_id):
+def show_ticket_info(chat_id, ticket_id): #просмотр подробной информации тикета
     try:
         conn = sqlite3.connect(DB_FILE)
         conn.row_factory = sqlite3.Row
@@ -722,7 +811,7 @@ def show_ticket_info(chat_id, ticket_id):
         print(f"Ошибка базы данных: {e}")
         bot.send_text(chat_id=chat_id, text="❌ Ошибка при загрузке информации о тикете")
 
-def close_ticket(chat_id, ticket_id):
+def close_ticket(chat_id, ticket_id): #заркрытие тикета
     try:
         with sqlite3.connect(DB_FILE) as conn:
             conn.row_factory = sqlite3.Row
@@ -789,7 +878,8 @@ def close_ticket(chat_id, ticket_id):
     except sqlite3.Error as e:
         print(f"Ошибка базы данных: {e}")
         bot.send_text(chat_id=chat_id, text="❌ Ошибка при закрытии тикета")
-        
+
+##события
 def start_create_event(chat_id): #создание события
     user_states[chat_id] = {
         "state": "awaiting_event_name",
@@ -940,44 +1030,8 @@ def show_my_events(chat_id): #события пользователя
         inline_keyboard_markup=json.dumps([[back_button]])
     )
 
-def show_help(chat_id): #действие при команде /help
-    user_context[chat_id] = "help"
-    help_text = (
-        "📋 Список всех доступных команд:\n\n"
-        "🔹 Основные команды:\n"
-        "/news - Последние новости компании\n"
-        "/about - Информация о компании\n"
-        "/contacts - Контактные данные\n"
-        "/cancel - Прервать текущий диалог\n"
-        "/back - Вернуться назад\n\n"
-        "🔹 1С материалы:\n"
-        "/docs_1c - Документация и материалы по 1С\n"
-        "/reviews_1c - Отзывы о наших внедрениях 1С\n\n"
-        "🔹 Поддержка:\n"
-        "/support - Создать новый тикет\n"
-        "/my_tickets - Просмотреть мои тикеты\n"
-        "/close_ticket - Закрыть тикет\n\n"
-        "🔹 События:\n"
-        "/create_event - Создать новое событие\n"
-        "/my_events - Посмотреть мои события\n"
-        "🔹 Администрирование:\n"
-        "/stats - Статистика использования бота\n"
-        "/broadcast - Рассылка сообщений\n\n"
-        "Воспользуйтесь кнопками или введите команду вручную"
-    )
-    processing_time
-    bot.send_text(chat_id=chat_id, text=help_text)
-    start_command_buttons(chat_id)
 
-def cancel_current_dialog(chat_id): #выход из диалога
-    if chat_id in user_states:
-        del user_states[chat_id]  # Полностью очищаем состояние
-
-    processing_time
-    bot.send_text(chat_id=chat_id, text="❌ Вы вышли из текущего диалога.", 
-        inline_keyboard_markup=json.dumps([[back_button]])
-    )
-
+#АДМИНИСТРАТОРАМ
 def show_admin_panel(chat_id): #панель администратора
     processing_time
     bot.send_text(
@@ -992,8 +1046,7 @@ def show_admin_panel(chat_id): #панель администратора
         ])
     )
 
-# Добавляем функцию показа всей статистики для админов
-def show_all_stats(chat_id):
+def show_all_stats(chat_id): #статистика по всем пользователям
     try:
         # Получаем статистику по всем пользователям
         stats = []
@@ -1184,74 +1237,8 @@ def cancel_broadcast(chat_id): #отмена рассылки
         ])
     )
 
-def go_back(chat_id): #кнопка "назад"
-     # Если есть активное состояние (создание тикета/события)
-    if chat_id in user_states:
-        state_info = user_states[chat_id]
-        state = state_info.get("state", "")
-        
-        # Создание тикета
-        if state == "awaiting_ticket_description":
-            processing_time
-            bot.send_text(
-                chat_id=chat_id,
-                text="🛠 Измените тему обращения:",
-                inline_keyboard_markup=json.dumps([[back_button, cancel_button]])
-            )
-            state_info["state"] = "awaiting_ticket_subject"
-
-        elif state == "awaiting_ticket_deadline":
-            subject = state_info["ticket_data"].get("subject", "")
-            description = state_info["ticket_data"].get("description", "")
-            processing_time
-            bot.send_text(
-                chat_id=chat_id,
-                text=f"🛠 Тема: {subject}\n📝 Описание: {description}\n\nИзмените описание обращения:",
-                inline_keyboard_markup=json.dumps([[back_button, cancel_button]])
-            )
-            state_info["state"] = "awaiting_ticket_description"
-
-        # Создание события
-        elif state == "awaiting_event_datetime":
-            name = state_info["event_data"].get("name", "")
-            processing_time
-            bot.send_text(
-                chat_id=chat_id,
-                text=f"🗓 Измените название события:\n(было: {name})",
-                inline_keyboard_markup=json.dumps([[back_button, cancel_button]])
-            )
-            state_info["state"] = "awaiting_event_name"
-
-        elif state == "awaiting_event_reminder":
-            name = state_info["event_data"].get("name", "")
-            datetime_str = state_info["event_data"]["datetime"].strftime("%d.%m.%Y %H:%M")
-            processing_time
-            bot.send_text(
-                chat_id=chat_id,
-                text=f"🗓 Название: {name}\n📝"
-                     f"📅 Дата и время: {datetime_str}\nИзмените дату и время события:",
-                inline_keyboard_markup=json.dumps([[back_button, cancel_button]])
-            )
-            state_info["state"] = "awaiting_event_datetime"
-
-        # Для всех необработанных состояний
-        else:
-            user_states.pop(chat_id, None)
-            processing_time
-            start_command_buttons(chat_id)
-
-    # Если есть контекст (просмотр разделов)
-    elif chat_id in user_context:
-        del user_context[chat_id]
-        processing_time
-        start_command_buttons(chat_id)
-
-    # Стандартный возврат в главное меню
-    else:
-        processing_time
-        start_command_buttons(chat_id)
-
-def log_user_request(user_email, command):
+#ДОПОЛНИТЕЛЬНЫЕ МЕТОДЫ
+def log_user_request(user_email, command): #сохранение истории запросов в БД
     try:
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
@@ -1264,7 +1251,7 @@ def log_user_request(user_email, command):
     except sqlite3.Error as e:
         print(f"Ошибка при записи запроса в историю: {e}")
 
-def get_request_stats():
+def get_request_stats(): #извлечение данных из БД для статистики
     try:
         with sqlite3.connect(DB_FILE) as conn:
             conn.row_factory = sqlite3.Row
@@ -1318,6 +1305,7 @@ def get_request_stats():
         print(f"Ошибка при получении статистики пользователей: {e}")
         return []
 
+#ОБРАБОТЧИКИ
 def process_command(chat_id, command): #обработка всех команд
     command = command.lower().strip()
     
