@@ -1291,7 +1291,7 @@ def process_command(chat_id, command): #обработка всех команд
         send_contacts(chat_id)
     elif command == "/docs_1C":
         send_1c_docs(chat_id)
-    elif command == "/1creviews_1C":
+    elif command == "/reviews_1C":
         send_1c_reviews(chat_id)
     elif command == "/support":
         start_support_ticket(chat_id)
