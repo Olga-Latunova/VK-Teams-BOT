@@ -1,6 +1,8 @@
 import json
 from bot.bot import Bot
 from bot.handler import MessageHandler, BotButtonCommandHandler
+from dotenv import load_dotenv
+import os
 import time
 from datetime import datetime, timedelta
 import threading
@@ -9,6 +11,7 @@ import re
 import sqlite3
 from datetime import datetime, timedelta
 
+load_dotenv() 
 # Подключение к базе данных
 conn = sqlite3.connect('tickets.db')
 cursor = conn.cursor()
@@ -32,7 +35,7 @@ conn.close()
 
 DB_FILE = 'tickets.db' 
 
-TOKEN = "001.1806729577.0340071044:1011814127"  # токен бота
+TOKEN = os.getenv("VK_API_TOKEN")  # токен бота
 # Удалите старую функцию init_db() и оставьте только:
 class Database:
     @staticmethod
