@@ -39,8 +39,7 @@ TOKEN = os.getenv("VK_API_TOKEN")  # токен бота
 # Удалите старую функцию init_db() и оставьте только:
 class Database:
     @staticmethod
-    def init_db():
-        """Инициализация структуры базы данных"""
+    def init_db(): #инициализация структуры БД
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
             
@@ -1290,9 +1289,9 @@ def process_command(chat_id, command): #обработка всех команд
         send_about(chat_id)
     elif command == "/contacts":
         send_contacts(chat_id)
-    elif command == "/1c_docs":
+    elif command == "/docs_1C":
         send_1c_docs(chat_id)
-    elif command == "/1c_reviews":
+    elif command == "/1creviews_1C":
         send_1c_reviews(chat_id)
     elif command == "/support":
         start_support_ticket(chat_id)
@@ -1303,8 +1302,8 @@ def process_command(chat_id, command): #обработка всех команд
                 text="Выберите тип тикетов:",
                 inline_keyboard_markup=json.dumps([
                     [
-                        {"text": "📌 Мои личные", "callbackData": "user_cmd_show_personal_tickets"},
-                        {"text": "💼 Назначенные мне", "callbackData": "user_cmd_show_assigned_tickets"}
+                        {"text": "📌 Мои личные", "callbackData": "user_cmd_show_personal_tickets", "style": "primary"},
+                        {"text": "💼 Назначенные мне", "callbackData": "user_cmd_show_assigned_tickets", "style": "primary"}
                     ],
                     [back_button]
                 ])
