@@ -34,13 +34,13 @@ conn.close()
 # Создаем соединение с базой данных
 
 DB_FILE = 'tickets.db' 
+EVENTS_DB_FILE = 'events.db'
 
 TOKEN = os.getenv("VK_API_TOKEN")  # токен бота
 # Удалите старую функцию init_db() и оставьте только:
 class Database:
     @staticmethod
-    def init_db():
-        """Инициализация структуры базы данных"""
+    def init_db(): #инициализация структуры БД
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
             
@@ -61,6 +61,20 @@ class Database:
                 ticket_type TEXT
             )
             ''')
+
+            # Новая таблица для истории запросов
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS request_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_email TEXT NOT NULL,
+                command TEXT NOT NULL,
+                timestamp TEXT NOT NULL
+            )
+            ''')
+            
+            # Индексы
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_history_user ON request_history(user_email)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_history_time ON request_history(timestamp)')
             
             # Индексы для ускорения запросов
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_creator ON tickets(creator)')
@@ -71,6 +85,31 @@ class Database:
 
 # Инициализация БД
 Database.init_db()
+def init_events_table():
+    """Создаёт таблицу событий в events.db (без description)"""
+    try:
+        with sqlite3.connect(EVENTS_DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS events (
+                id TEXT PRIMARY KEY,
+                creator TEXT NOT NULL,
+                name TEXT NOT NULL,
+                event_time TEXT NOT NULL,
+                reminder_time TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'Запланировано',
+                created_at TEXT NOT NULL,
+                notified INTEGER DEFAULT 0
+            )
+            ''')
+            # Индексы для ускорения
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_event_creator ON events(creator)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_event_time ON events(event_time)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_event_notified ON events(notified)')
+            conn.commit()
+        print("✅ Таблица событий (events.db) успешно инициализирована")
+    except Exception as e:
+        print(f"❌ Ошибка при инициализации таблицы events: {e}")
 
 # Получаем следующий номер тикета из БД
 def get_next_ticket_number():
@@ -91,9 +130,43 @@ def generate_ticket_id():
     ticket_id = f"TKT-{ticket_counter:04d}"
     ticket_counter += 1
     return ticket_id
-    
+def get_next_event_number():
+    """Получает следующий номер события для генерации ID"""
+    with sqlite3.connect(EVENTS_DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT MAX(id) FROM events")
+        result = cursor.fetchone()[0]
+        if result:
+            last_num = int(result.split('-')[1])
+            return last_num + 1
+        else:
+            return 1
 
-ticket_counter = 1
+def create_event(chat_id, name, description, event_time, reminder_time):
+    event_id = f"EVT-{get_next_event_number():04d}"
+    created_at = datetime.now(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
+    try:
+        with sqlite3.connect(EVENTS_DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+            INSERT INTO events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                event_id,
+                chat_id,
+                name,
+                description,
+                event_time,
+                reminder_time,
+                "Запланировано",
+                created_at,
+                0
+            ))
+            conn.commit()
+        return event_id
+    except Exception as e:
+        print(f"❌ Ошибка при создании события: {e}")
+        return None
+    
 usage_stats = {}
 user_stats = {}
 
@@ -136,6 +209,12 @@ DOCS_TEXT = "https://disk.yandex.ru/d/VZC9ueCQYMGX2Q" #инструкции дл
 
 # Устанавливаем московский часовой пояс
 MOSCOW_TZ = pytz.timezone('Europe/Moscow')
+naive_datetime = datetime.strptime("05.04.2025 14:30", "%d.%m.%Y %H:%M")
+aware_datetime = MOSCOW_TZ.localize(naive_datetime)
+utc_time = aware_datetime.astimezone(pytz.utc)
+
+# Сохраняем в БД в правильном формате
+formatted_time = utc_time.strftime("%Y-%m-%d %H:%M:%S")
 
 bot = Bot(token=TOKEN)
 
@@ -160,9 +239,6 @@ admin_users = {
     "aabrosimov@koderline.com": "Абросимов Артём",
     "mkozhemyak@koderline.com": "Кожемяк Максим"
 }  # Словарь администраторов {email: имя}
-#"o.latunova@bot-60.bizml.ru": "Латунова Ольга",
-# Глобальный счетчик тикетов
-ticket_counter = 1
 
 #общие кнопки для всех состояний
 back_button = {"text": "⬅️ Назад", "callbackData": "user_cmd_/back"} #кнопка "назад"
@@ -171,8 +247,6 @@ cancel_button = {"text": "❌ Отмена", "callbackData": "user_cmd_/cancel"}
 
 #время задержки ответа (симуляция обработки запроса)
 processing_time = time.sleep(0.2)
-
-
 
 def start_command_buttons(chat_id): #главное меню
     buttons = [
@@ -211,34 +285,70 @@ def start_command_buttons(chat_id): #главное меню
 def show_my_stats(chat_id):
     try:
         with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
-            # Общее количество тикетов
-            cursor.execute('SELECT COUNT(*) FROM tickets WHERE creator = ?', (chat_id,))
-            total_tickets = cursor.fetchone()[0]
+            # Получаем email текущего пользователя
+            user_email = chat_id
             
-            # Количество открытых тикетов
+            # Статистика запросов
             cursor.execute('''
-            SELECT COUNT(*) 
-            FROM tickets 
-            WHERE creator = ? AND status = 'Открыт'
-            ''', (chat_id,))
-            open_tickets = cursor.fetchone()[0]
-            
+                SELECT COUNT(*) as count FROM request_history 
+                WHERE user_email = ?
+            ''', (user_email,))
+            request_count = cursor.fetchone()['count'] or 0
+
+            # Статистика созданных тикетов
+            cursor.execute('''
+                SELECT 
+                    COUNT(*) as total,
+                    SUM(CASE WHEN status = 'Закрыт' THEN 1 ELSE 0 END) as closed
+                FROM tickets 
+                WHERE creator = ?
+            ''', (user_email,))
+            created = cursor.fetchone()
+            created_total = created['total'] or 0 if created else 0
+            created_closed = created['closed'] or 0 if created else 0
+
+            # Статистика назначенных открытых тикетов
+            cursor.execute('''
+                SELECT COUNT(*) as open_count
+                FROM tickets 
+                WHERE assigned_to = ? AND status = 'Открыт'
+            ''', (user_email,))
+            assigned_open = cursor.fetchone()['open_count'] or 0
+
+            # Формируем сообщение
+            message_text = (
+                "📊 Ваша персональная статистика:\n\n"
+                f"📧 {user_email}\n"
+                f"🔹 Количество запросов: {request_count}\n"
+                f"🔹 Созданные тикеты: {created_total}\n"
+                f"🟢 Закрытые тикеты: {created_closed}\n"
+                f"🔴 Открытые тикеты: {assigned_open}"
+            )
+
             bot.send_text(
                 chat_id=chat_id,
-                text=f"📊 Ваша статистика:\n\n"
-                     f"👤 Пользователь: {admin_users.get(chat_id, chat_id)}\n"
-                     f"📧 Email: {chat_id}\n"
-                     f"🔢 Всего запросов: {user_stats.get(chat_id, 0)}\n"
-                     f"🎫 Всего тикетов: {total_tickets}\n"
-                     f"🟢 Открытых тикетов: {open_tickets}",
+                text=message_text,
                 inline_keyboard_markup=json.dumps([[back_button]])
             )
-            
+
     except sqlite3.Error as e:
         print(f"Ошибка базы данных: {e}")
-        bot.send_text(chat_id=chat_id, text="❌ Ошибка при загрузке статистики")
+        bot.send_text(
+            chat_id=chat_id,
+            text="❌ Ошибка при загрузке вашей статистики",
+            inline_keyboard_markup=json.dumps([[back_button]])
+        )
+    except Exception as e:
+        print(f"Неожиданная ошибка: {e}")
+        bot.send_text(
+            chat_id=chat_id,
+            text="❌ Произошла непредвиденная ошибка",
+            inline_keyboard_markup=json.dumps([[back_button]])
+        )
+
 def receiving_admin_access(chat_id, message_text): #получение администраторских прав с помощью пароля (а надо ли?...)
     if message_text.strip() == adm_password:
         admin_users.add(chat_id)
@@ -360,7 +470,6 @@ def start_support_ticket(chat_id): #создание тикета
         text="🛠 Создание тикета\n\nУкажите тему обращения:",
         inline_keyboard_markup=json.dumps([[back_button]])
     )
-
 
 def process_ticket_creation(chat_id, message_text): #обработка и сохранение тикета
     # Проверка на отмену
@@ -545,138 +654,155 @@ def assign_ticket(chat_id, admin_id):
 
 def show_user_tickets(chat_id):
     try:
-            conn = sqlite3.connect(DB_FILE)
-            conn.row_factory = sqlite3.Row  
-            cursor = conn.cursor()
-            cursor.execute('''
-            SELECT id, subject, status, assigned_to_name 
-            FROM tickets 
-            WHERE creator = ?
-            ORDER BY created_at DESC
-            ''', (chat_id,))
+        conn = sqlite3.connect(DB_FILE)
+        conn.row_factory = sqlite3.Row  
+        cursor = conn.cursor()
+        
+        # Получаем все тикеты, созданные этим пользователем
+        cursor.execute('''
+        SELECT id, subject, status, assigned_to, assigned_to_name 
+        FROM tickets 
+        WHERE creator = ?
+        ORDER BY created_at DESC
+        ''', (chat_id,))
+        
+        tickets = cursor.fetchall()
+        
+        if not tickets:
+            bot.send_text(chat_id=chat_id, text="❌ У вас нет созданных тикетов.")
+            return
+        
+        keyboard = []
+        for ticket in tickets:
+            # Формируем текст кнопки
+            status_emoji = "🟢" if ticket['status'] == 'Закрыт' else "🟡"
+            ticket_text = f"{ticket['id']}: {ticket['subject']} ({status_emoji} {ticket['status']})"
             
-            tickets = cursor.fetchall()
+            if ticket['assigned_to'] != chat_id:
+                ticket_text += f" → {ticket['assigned_to_name']}"
             
-            if not tickets:
-                bot.send_text(chat_id=chat_id, text="❌ У вас нет созданных тикетов.")
-                return
+            row = [{
+                "text": ticket_text,
+                "callbackData": f"view_ticket_{ticket['id']}"
+            }]
             
-            keyboard = []
-            for ticket in tickets:
-                row = [{
-                    "text": f"{ticket['id']}: {ticket['subject']} ({ticket['status']})",
-                    "callbackData": f"view_ticket_{ticket['id']}"
-                }]
-                
-                if ticket['status'] == "Открыт" and ticket['assigned_to_name'] == "Себе":
-                    row.append({
-                        "text": "✅ Закрыть",
-                        "callbackData": f"close_ticket_{ticket['id']}"
-                    })
-                
-                keyboard.append(row)
+            # Добавляем кнопку закрытия только если:
+            # 1. Тикет открыт
+            # 2. Назначен самому себе
+            if ticket['status'] == "Открыт" and ticket['assigned_to'] == chat_id:
+                row.append({
+                    "text": "✅ Закрыть",
+                    "callbackData": f"close_ticket_{ticket['id']}"
+                })
             
-            keyboard.append([back_button])
-            
-            bot.send_text(
-                chat_id=chat_id,
-                text="📋 Ваши тикеты:",
-                inline_keyboard_markup=json.dumps(keyboard)
-            )
-            
+            keyboard.append(row)
+        
+        keyboard.append([back_button])
+        
+        bot.send_text(
+            chat_id=chat_id,
+            text="📋 Ваши личные тикеты:",
+            inline_keyboard_markup=json.dumps(keyboard)
+        )
+        
     except sqlite3.Error as e:
         print(f"Ошибка базы данных: {e}")
         bot.send_text(chat_id=chat_id, text="❌ Ошибка при загрузке тикетов")
 
 def show_admin_tickets(chat_id):
     try:
-            conn = sqlite3.connect(DB_FILE)
-            conn.row_factory = sqlite3.Row  # ✅ ПРАВИЛЬНО
-            cursor = conn.cursor()
+        conn = sqlite3.connect(DB_FILE)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Получаем тикеты, назначенные этому администратору
+        cursor.execute('''
+        SELECT id, subject, status, creator 
+        FROM tickets 
+        WHERE assigned_to = ? AND status = 'Открыт'
+        ORDER BY created_at DESC
+        ''', (chat_id,))
+        
+        admin_tickets = cursor.fetchall()
+        
+        if not admin_tickets:
+            bot.send_text(chat_id=chat_id, text="❌ Нет назначенных вам тикетов.")
+            return
+        
+        keyboard = []
+        for ticket in admin_tickets:
+            creator_name = admin_users.get(ticket['creator'], ticket['creator'])
+            row = [
+                {
+                    "text": f"{ticket['id']}: {ticket['subject']} (от {creator_name})",
+                    "callbackData": f"view_ticket_{ticket['id']}"
+                },
+                {
+                    "text": "✅ Закрыть",
+                    "callbackData": f"close_ticket_{ticket['id']}"
+                }
+            ]
+            keyboard.append(row)
+        
+        keyboard.append([back_button])
+        
+        bot.send_text(
+            chat_id=chat_id,
+            text="📋 Назначенные вам тикеты:",
+            inline_keyboard_markup=json.dumps(keyboard))
             
-            cursor.execute('''
-            SELECT id, subject, status 
-            FROM tickets 
-            WHERE assigned_to = ? AND status = 'Открыт'
-            ORDER BY created_at DESC
-            ''', (chat_id,))
-            
-            admin_tickets = cursor.fetchall()
-            
-            if not admin_tickets:
-                bot.send_text(chat_id=chat_id, text="❌ Нет назначенных вам тикетов.")
-                return
-            
-            keyboard = []
-            for ticket in admin_tickets:
-                keyboard.append([
-                    {
-                        "text": f"{ticket['id']}: {ticket['subject']}",
-                        "callbackData": f"view_ticket_{ticket['id']}"
-                    },
-                    {
-                        "text": "✅ Закрыть",
-                        "callbackData": f"admin_cmd_close_ticket_{ticket['id']}"
-                    }
-                ])
-            
-            keyboard.append([back_button])
-            
-            bot.send_text(
-                chat_id=chat_id,
-                text="📋 Назначенные вам тикеты:",
-                inline_keyboard_markup=json.dumps(keyboard))
-                
     except sqlite3.Error as e:
         print(f"Ошибка БД: {e}")
         bot.send_text(chat_id=chat_id, text="❌ Ошибка при загрузке тикетов")
+
 def show_ticket_info(chat_id, ticket_id):
     try:
-            conn = sqlite3.connect(DB_FILE)
-            conn.row_factory = sqlite3.Row  # ✅ ПРАВИЛЬНО
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM tickets WHERE id = ?', (ticket_id,))
-            ticket = cursor.fetchone()
+        conn = sqlite3.connect(DB_FILE)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM tickets WHERE id = ?', (ticket_id,))
+        ticket = cursor.fetchone()
+        
+        if not ticket:
+            bot.send_text(chat_id=chat_id, text="❌ Тикет не найден.")
+            return
+        
+        info_text = (
+            f"ℹ️ Информация о тикете #{ticket['id']}:\n\n"
+            f"🔹 Тема: {ticket['subject']}\n"
+            f"🔹 Описание: {ticket['description']}\n"
+            f"🔹 Дедлайн: {ticket['deadline']}\n"
+            f"🔹 Статус: {ticket['status']}\n"
+            f"🔹 Создан: {ticket['created_at']}\n"
+            f"🔹 Создатель: {admin_users.get(ticket['creator'], ticket['creator'])}\n"
+            f"🔹 Назначен: {ticket['assigned_to_name']}\n"
+            f"🔹 Закрыт: {ticket['closed_at'] if ticket['closed_at'] else '—'}"
+        )
+        
+        keyboard = []
+        
+        # Проверяем, может ли пользователь закрыть тикет
+        can_close = False
+        if ticket['status'] == 'Открыт':
+            if ticket['assigned_to'] == chat_id:  # Пользователь - назначенный администратор
+                can_close = True
+        
+        if can_close:
+            keyboard.append([{
+                "text": "✅ Закрыть тикет",
+                "callbackData": f"close_ticket_{ticket['id']}"
+            }])
+        
+        keyboard.append([back_button])
+        
+        bot.send_text(
+            chat_id=chat_id,
+            text=info_text,
+            inline_keyboard_markup=json.dumps(keyboard))
             
-            if not ticket:
-                bot.send_text(chat_id=chat_id, text="❌ Тикет не найден.")
-                return
-            
-            info_text = (
-                f"ℹ️ Информация о тикете #{ticket['id']}:\n\n"
-                f"🔹 Тема: {ticket['subject']}\n"
-                f"🔹 Описание: {ticket['description']}\n"
-                f"🔹 Дедлайн: {ticket['deadline']}\n"
-                f"🔹 Статус: {ticket['status']}\n"
-                f"🔹 Создан: {ticket['created_at']}\n"
-                f"🔹 Создатель: {admin_users.get(ticket['creator'], ticket['creator'])}\n"
-                f"🔹 Назначен: {ticket['assigned_to_name']}\n"
-                f"🔹 Закрыт: {ticket['closed_at'] if ticket['closed_at'] else '—'}"
-            )
-            
-            keyboard = []
-            can_close = (
-                chat_id in admin_users or 
-                (ticket['creator'] == chat_id and ticket['assigned_to_name'] == "Себе" and ticket['status'] == "Открыт")
-            )
-            
-            if can_close and ticket['status'] == "Открыт":
-                keyboard.append([{
-                    "text": "✅ Закрыть тикет",
-                    "callbackData": f"close_ticket_{ticket['id']}"
-                }])
-            
-            keyboard.append([back_button])
-            
-            bot.send_text(
-                chat_id=chat_id,
-                text=info_text,
-                inline_keyboard_markup=json.dumps(keyboard))
-                
     except sqlite3.Error as e:
         print(f"Ошибка базы данных: {e}")
         bot.send_text(chat_id=chat_id, text="❌ Ошибка при загрузке информации о тикете")
-
 
 def delete_ticket(ticket_id):
     conn = sqlite3.connect('tickets.db')
@@ -694,7 +820,7 @@ def close_ticket(chat_id, ticket_id):
             
             # Получаем данные тикета
             cursor.execute('''
-            SELECT creator, assigned_to_name, status, subject 
+            SELECT creator, assigned_to, assigned_to_name, status, subject 
             FROM tickets 
             WHERE id = ?
             ''', (ticket_id,))
@@ -704,10 +830,19 @@ def close_ticket(chat_id, ticket_id):
                 bot.send_text(chat_id=chat_id, text="❌ Тикет не найден.")
                 return
                 
-            # Проверяем права на закрытие
-            if (chat_id not in admin_users and 
-                (ticket['creator'] != chat_id or ticket['assigned_to_name'] != "Себе")):
-                bot.send_text(chat_id=chat_id, text="❌ Вы не можете закрыть этот тикет.")
+            # Проверяем права на закрытие:
+            # 1. Тикет должен быть открыт
+            # 2. Пользователь должен быть либо создателем (если назначен себе), либо назначенным администратором
+            can_close = False
+            if ticket['status'] == 'Открыт':
+                if ticket['assigned_to'] == chat_id:  # Пользователь - назначенный администратор
+                    can_close = True
+            
+            if not can_close:
+                bot.send_text(
+                    chat_id=chat_id, 
+                    text="❌ Вы не можете закрыть этот тикет. Только назначенный сотрудник может его закрыть."
+                )
                 return
             
             # Обновляем статус
@@ -757,20 +892,12 @@ def start_create_event(chat_id): #создание события
         inline_keyboard_markup=json.dumps([[back_button, cancel_button]])
         )
 
-def process_event_creation(chat_id, message_text): #обработка и сохранение события
+def process_event_creation(chat_id, message_text):
+    """Обработка и сохранение события (без описания)"""
+    state = user_states.get(chat_id, {}).get("state")
 
-    if user_states.get(chat_id, {}).get("state") == "awaiting_event_name":
+    if state == "awaiting_event_name":
         user_states[chat_id]["event_data"]["name"] = message_text
-        user_states[chat_id]["state"] = "awaiting_event_description"
-        processing_time
-        bot.send_text(
-            chat_id=chat_id,
-            text="📝 Теперь опишите событие подробно:",
-            inline_keyboard_markup=json.dumps([[back_button, cancel_button]])
-        )
-    
-    elif user_states.get(chat_id, {}).get("state") == "awaiting_event_description":
-        user_states[chat_id]["event_data"]["description"] = message_text
         user_states[chat_id]["state"] = "awaiting_event_datetime"
         processing_time
         bot.send_text(
@@ -778,33 +905,31 @@ def process_event_creation(chat_id, message_text): #обработка и сох
             text="⏰ Укажите дату и время события (в формате ДД.ММ.ГГГГ ЧЧ:ММ):",
             inline_keyboard_markup=json.dumps([[back_button, cancel_button]])
         )
-    
-    elif user_states.get(chat_id, {}).get("state") == "awaiting_event_datetime":
+
+    elif state == "awaiting_event_datetime":
         try:
-        # Преобразуем введенное время с учетом московского часового пояса
             naive_datetime = datetime.strptime(message_text, "%d.%m.%Y %H:%M")
             event_datetime = MOSCOW_TZ.localize(naive_datetime)
             user_states[chat_id]["event_data"]["datetime"] = event_datetime
-
-            # Переходим к вводу времени напоминания
             processing_time
             bot.send_text(
                 chat_id=chat_id,
                 text="⏰ Через сколько времени напомнить?\n"
-                    "Введите интервал в формате:\n"
-                    "Д:ЧЧ:ММ:СС\n"
-                    "Например: 0:02:30:00 — за 2 часа 30 минут",
+                     "Введите интервал в формате:\n"
+                     "Д:ЧЧ:ММ:СС\n"
+                     "Например: 0:02:30:00 — за 2 часа 30 минут",
                 inline_keyboard_markup=json.dumps([[back_button, cancel_button]])
             )
-
             user_states[chat_id]["state"] = "awaiting_event_reminder"
+
         except ValueError:
             processing_time
             bot.send_text(
                 chat_id=chat_id,
                 text="❌ Неверный формат даты и времени. Пожалуйста, укажите в формате ДД.ММ.ГГГГ ЧЧ:ММ:"
             )
-    elif user_states.get(chat_id, {}).get("state") == "awaiting_event_reminder":
+
+    elif state == "awaiting_event_reminder":
         time_format_pattern = r"^\d+:\d{2}:\d{2}:\d{2}$"
         if not re.match(time_format_pattern, message_text):
             processing_time
@@ -815,8 +940,8 @@ def process_event_creation(chat_id, message_text): #обработка и сох
                      "Пример: 0:00:10:30 — за 10 минут 30 секунд"
             )
             return
+
         try:
-            # Парсим формат Д:ЧЧ:ММ:СС
             days, hours, minutes, seconds = map(int, message_text.split(':'))
             if any(x < 0 for x in [days, hours, minutes, seconds]):
                 raise ValueError("Время не может быть отрицательным")
@@ -828,84 +953,146 @@ def process_event_creation(chat_id, message_text): #обработка и сох
             reminder_delta = timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
             reminder_time = event_datetime - reminder_delta
 
-            # Сохраняем событие
-            if chat_id not in events:
-                events[chat_id] = []
-            event_id = f"EVT-{len(events[chat_id]) + 1:03d}"
-            event_data["id"] = event_id
-            event_data["status"] = "Запланировано"
-            event_data["created_at"] = datetime.now(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
-            events[chat_id].append(event_data)
-
-            # Сообщение пользователю
-            event_info = (
-                f"✅ Событие создано!\n"
-                f"🔹 Название: {event_data['name']}\n"
-                f"🔹 Описание: {event_data['description']}\n"
-                f"🔹 Дата и время: {event_datetime.strftime('%d.%m.%Y %H:%M')}\n"
-                f"🔔 Напомню за {days} дней {hours} часов {minutes} минут {seconds} секунд"
+            # Сохраняем событие в БД (без description)
+            event_id = create_event(
+                chat_id=chat_id,
+                name=event_data["name"],
+                description="",  # ❌ Убрали описание
+                event_time=event_datetime,
+                reminder_time=reminder_time
             )
 
-            processing_time
-            bot.send_text(chat_id=chat_id, text=event_info,
-                inline_keyboard_markup=json.dumps([[back_button]])
-            )
+            if event_id:
+                event_info = (
+                    f"✅ Событие создано!\n"
+                    f"🔹 Название: {event_data['name']}\n"
+                    f"🔹 Дата и время: {event_datetime.strftime('%d.%m.%Y %H:%M')}\n"
+                    f"🔔 Напомню за {days} дней {hours} часов {minutes} минут {seconds} секунд"
+                )
+                processing_time
+                bot.send_text(
+                    chat_id=chat_id,
+                    text=event_info,
+                    inline_keyboard_markup=json.dumps([[back_button]])
+                )
 
-            # Запуск напоминания
-            threading.Thread(
-                target=schedule_reminder,
-                args=(chat_id, event_id, event_data['name'], reminder_time),
-                daemon=True
-            ).start()
+                # Запуск напоминания
+                threading.Thread(
+                    target=schedule_reminder,
+                    args=(chat_id, event_id, event_data['name'], reminder_time),
+                    daemon=True
+                ).start()
+
+            else:
+                processing_time
+                bot.send_text(
+                    chat_id=chat_id,
+                    text="❌ Не удалось сохранить событие."
+                )
 
             # Очистка состояния
             user_states.pop(chat_id, None)
+
         except Exception as e:
-            print(e)
+            print(f"❌ Ошибка при обработке напоминания: {e}")
             processing_time
             bot.send_text(
                 chat_id=chat_id,
-                text="❌ Неверный формат времени напоминания.\n"
-                     "Используйте формат Д:ЧЧ:ММ:СС\n")
-               
-def schedule_reminder(chat_id, event_id, event_name, reminder_time): #напоминание о событии
-        now = datetime.now(MOSCOW_TZ)
-        delay = (reminder_time - now).total_seconds()
-        if delay > 0:
-            time.sleep(delay)
+                text="❌ Произошла ошибка при создании события."
+            )
+def schedule_reminder(chat_id, event_id, event_name, reminder_time):
+    """Планирует напоминание о событии и обновляет статус в БД."""
+    now = datetime.now(pytz.utc)  # Текущее время в UTC
+    reminder_time_utc = reminder_time.replace(tzinfo=pytz.utc)
+
+    delay = (reminder_time_utc - now).total_seconds()
+
+    if delay > 0:
+        print(f"[INFO] Напоминание для {event_id} запланировано через {delay:.0f} секунд")
+        time.sleep(delay)
+        try:
+            # Отправляем напоминание
             bot.send_text(
                 chat_id=chat_id,
-                text=f"🔔 Напоминание о событии!\n"
-                    f"Через несколько минут начнётся:\n"
-                    f"*{event_name}*\n"
-                    f"ID события: {event_id}",
+                text=f"🔔 Напоминание о событии!Через несколько минут начнётся:*{event_name}*ID события: {event_id}",
                 inline_keyboard_markup=json.dumps([[back_button]])
             )
+            # Обновляем статус notified в events.db
+            with sqlite3.connect(EVENTS_DB_FILE) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE events SET notified = 1 WHERE id = ?
+                ''', (event_id,))
+                conn.commit()
+            print(f"[INFO] Уведомление отправлено для события {event_id}")
+        except Exception as e:
+            print(f"[ERROR] Ошибка при отправке уведомления для события {event_id}: {e}")
+    else:
+        print(f"[WARN] Невозможно запланировать напоминание для события {event_id}, время уже прошло")
 
-def show_my_events(chat_id): #события пользователя
-    if chat_id not in events or not events[chat_id]:
-        processing_time
-        bot.send_text(chat_id=chat_id, text="У вас нет запланированных событий.", 
-            inline_keyboard_markup=json.dumps([[back_button]])
-        )
-        return
-    
-    events_text = "🗓 Ваши предстоящие события:\n\n"
-    for i, event in enumerate(events[chat_id], 1):
-        # Форматируем время с учетом часового пояса
-        event_time = event['datetime'].astimezone(MOSCOW_TZ)
-        events_text += (
-            f"{i}. #{event['id']}\n"
-            f"   Название: {event['name']}\n"
-            f"   Время: {event_time.strftime('%d.%m.%Y %H:%M')}\n"
-            f"   Статус: {event['status']}\n\n"
-        )
-    
-    processing_time
-    bot.send_text(chat_id=chat_id, text=events_text, 
-        inline_keyboard_markup=json.dumps([[back_button]])
-    )
+def show_my_events(chat_id):
+    try:
+        with sqlite3.connect(EVENTS_DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, name, description, event_time, status 
+                FROM events 
+                WHERE creator = ? AND status = 'Запланировано'
+                ORDER BY event_time ASC
+            ''', (chat_id,))
+            events = cursor.fetchall()
+            if not events:
+                bot.send_text(chat_id=chat_id, text="📅 У вас нет запланированных событий")
+                return
 
+            for event in events:
+                event_text = (
+                    f"📌 {event['name']}\n"
+                    f"🔹 ID: {event['id']}\n"
+                    f"🔹 Дата: {event['event_time']}\n"
+                    f"🔹 Статус: {event['status']}"
+                )
+                bot.send_text(
+                    chat_id=chat_id,
+                    text=event_text,
+                    inline_keyboard_markup=json.dumps([
+                        [{"text": "🔍 Посмотреть", "callbackData": f"view_event_{event['id']}"}]
+                    ])
+                )
+    except Exception as e:
+        print(f"❌ Ошибка при загрузке событий: {e}")
+        bot.send_text(chat_id=chat_id, text="❌ Не удалось загрузить события")
+def load_scheduled_reminders():
+    """Загружает все активные события из БД и планирует напоминания"""
+    try:
+        with sqlite3.connect(EVENTS_DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            # Получаем все события, по которым еще не было уведомления
+            cursor.execute('''
+                SELECT id, creator, name, event_time, reminder_time 
+                FROM events 
+                WHERE notified = 0 AND status = 'Запланировано'
+            ''')
+            events = cursor.fetchall()
+
+        for event in events:
+            now = datetime.now(pytz.utc)  # <<< Теперь текущее время тоже в UTC
+            reminder_time = datetime.strptime(event['reminder_time'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=pytz.utc)
+            delay = (reminder_time - now).total_seconds()
+
+            if delay > 0:
+                print(f"[INFO] Перезапускаю напоминание: {event['id']} через {delay} секунд")
+                threading.Thread(
+                    target=schedule_reminder,
+                    args=(event['creator'], event['id'], event['name'], reminder_time),
+                    daemon=True
+                ).start()
+            else:
+                print(f"[WARN] Событие {event['id']} просрочено или время напоминания уже прошло")
+    except Exception as e:
+        print(f"❌ Ошибка при загрузке напоминаний: {e}")
 def show_help(chat_id): #действие при команде /help
     user_context[chat_id] = "help"
     help_text = (
@@ -917,8 +1104,8 @@ def show_help(chat_id): #действие при команде /help
         "/cancel - Прервать текущий диалог\n"
         "/back - Вернуться назад\n\n"
         "🔹 1С материалы:\n"
-        "/1c_docs - Документация и материалы по 1С\n"
-        "/1c_reviews - Отзывы о наших внедрениях 1С\n\n"
+        "/docs_1c - Документация и материалы по 1С\n"
+        "/reviews_1c - Отзывы о наших внедрениях 1С\n\n"
         "🔹 Поддержка:\n"
         "/support - Создать новый тикет\n"
         "/my_tickets - Просмотреть мои тикеты\n"
@@ -961,49 +1148,102 @@ def show_admin_panel(chat_id): #панель администратора
 # Добавляем функцию показа всей статистики для админов
 def show_all_stats(chat_id):
     try:
-        conn = sqlite3.connect('tickets.db')
-        cursor = conn.cursor()
+        # Получаем статистику по всем пользователям
+        stats = []
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            # Получаем всех уникальных пользователей
+            cursor.execute('''
+                SELECT DISTINCT user_email as email FROM request_history
+                UNION
+                SELECT DISTINCT creator as email FROM tickets
+                UNION
+                SELECT DISTINCT assigned_to as email FROM tickets
+                WHERE assigned_to IS NOT NULL
+            ''')
+            users = [row['email'] for row in cursor.fetchall() if row['email']]
+
+            for user_email in users:
+                # Статистика запросов
+                cursor.execute('''
+                    SELECT COUNT(*) as count FROM request_history 
+                    WHERE user_email = ?
+                ''', (user_email,))
+                request_count = cursor.fetchone()['count'] or 0
+
+                # Статистика созданных тикетов
+                cursor.execute('''
+                    SELECT 
+                        COUNT(*) as total,
+                        SUM(CASE WHEN status = 'Закрыт' THEN 1 ELSE 0 END) as closed
+                    FROM tickets 
+                    WHERE creator = ?
+                ''', (user_email,))
+                created = cursor.fetchone()
+                created_total = created['total'] or 0 if created else 0
+                created_closed = created['closed'] or 0 if created else 0
+
+                # Статистика назначенных открытых тикетов
+                cursor.execute('''
+                    SELECT COUNT(*) as open_count
+                    FROM tickets 
+                    WHERE assigned_to = ? AND status = 'Открыт'
+                ''', (user_email,))
+                assigned_open = cursor.fetchone()['open_count'] or 0
+
+                stats.append({
+                    'email': user_email,
+                    'requests': request_count,
+                    'created_total': created_total,
+                    'created_closed': created_closed,
+                    'assigned_open': assigned_open
+                })
+
+        # Сортируем по количеству запросов (по убыванию)
+        stats.sort(key=lambda x: x['requests'], reverse=True)
+
+        # Формируем сообщение
+        message_text = "📊 Полная статистика по сотрудникам:\n\n"
         
-        # Получаем общую статистику
-        cursor.execute('SELECT COUNT(*) FROM tickets')
-        total_tickets = cursor.fetchone()[0]
-        
-        cursor.execute('SELECT COUNT(*) FROM tickets WHERE status = "Открыт"')
-        open_tickets = cursor.fetchone()[0]
-        
-        # Получаем статистику по пользователям
-        cursor.execute('''
-        SELECT creator, COUNT(*) as ticket_count
-        FROM tickets
-        GROUP BY creator
-        ORDER BY ticket_count DESC
-        ''')
-        user_stats = cursor.fetchall()
-        
-        stats_text = "📊 Общая статистика:\n\n"
-        stats_text += f"🔹 Всего тикетов: {total_tickets}\n"
-        stats_text += f"🔹 Открытых тикетов: {open_tickets}\n\n"
-        stats_text += "📌 Статистика по пользователям:\n"
-        
-        for user, count in user_stats:
-            stats_text += f"👤 {admin_users.get(user, user)}: {count} тикетов\n"
-        
+        for user in stats:
+            message_text += (
+                f"📧 {user['email']}\n"
+                f"🔹 Количество запросов: {user['requests']}\n"
+                f"🔹 Созданные тикеты: {user['created_total']}\n"
+                f"🟢 Закрытые тикеты: {user['created_closed']}\n"
+                f"🔴 Открытые тикеты: {user['assigned_open']}\n\n"
+            )
+
+        # Разбиваем длинное сообщение на части если нужно
+        max_length = 3000
+        if len(message_text) > max_length:
+            parts = [message_text[i:i+max_length] for i in range(0, len(message_text), max_length)]
+            for part in parts:
+                bot.send_text(chat_id=chat_id, text=part)
+                time.sleep(0.5)
+        else:
+            bot.send_text(
+                chat_id=chat_id,
+                text=message_text,
+                inline_keyboard_markup=json.dumps([[back_button]])
+            )
+
+    except sqlite3.Error as e:
+        print(f"Ошибка базы данных при получении статистики: {e}")
         bot.send_text(
             chat_id=chat_id,
-            text=stats_text,
+            text="❌ Произошла ошибка при получении статистики из базы данных.",
             inline_keyboard_markup=json.dumps([[back_button]])
         )
-        
-    except sqlite3.Error as e:
-        print(f"Ошибка БД при получении статистики: {e}")
+    except Exception as e:
+        print(f"Неожиданная ошибка в show_all_stats: {e}")
         bot.send_text(
             chat_id=chat_id,
-            text="❌ Ошибка при загрузке статистики."
+            text="❌ Произошла непредвиденная ошибка при формировании статистики.",
+            inline_keyboard_markup=json.dumps([[back_button]])
         )
-        
-    finally:
-        if conn:
-            conn.close()
 
 def show_user_stats_options(chat_id):
     if not admin_users:
@@ -1265,9 +1505,78 @@ def go_back(chat_id): #кнопка "назад"
         processing_time
         start_command_buttons(chat_id)
 
+def log_user_request(user_email, command):
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            timestamp = datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            cursor.execute(
+                'INSERT INTO request_history (user_email, command, timestamp) VALUES (?, ?, ?)',
+                (user_email, command, timestamp)
+            )
+            conn.commit()
+    except sqlite3.Error as e:
+        print(f"Ошибка при записи запроса в историю: {e}")
+
+def get_request_stats():
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Получаем всех пользователей, которые делали запросы или создавали тикеты
+            cursor.execute('''
+            SELECT DISTINCT user_email FROM request_history
+            UNION
+            SELECT DISTINCT creator FROM tickets
+            ''')
+            
+            users = [row['user_email'] for row in cursor.fetchall()]
+            
+            stats = []
+            for user_email in users:
+                if not user_email:
+                    continue
+                    
+                # Статистика запросов
+                cursor.execute('''
+                SELECT COUNT(*) as request_count 
+                FROM request_history 
+                WHERE user_email = ?
+                ''', (user_email,))
+                request_count = cursor.fetchone()['request_count']
+                
+                # Статистика тикетов
+                cursor.execute('''
+                SELECT 
+                    COUNT(*) as total_tickets,
+                    SUM(CASE WHEN status = 'Открыт' THEN 1 ELSE 0 END) as open_tickets,
+                    SUM(CASE WHEN status = 'Закрыт' THEN 1 ELSE 0 END) as closed_tickets
+                FROM tickets 
+                WHERE creator = ?
+                ''', (user_email,))
+                ticket_stats = cursor.fetchone()
+                
+                stats.append({
+                    'email': user_email,
+                    'request_count': request_count,
+                    'total_tickets': ticket_stats['total_tickets'],
+                    'open_tickets': ticket_stats['open_tickets'],
+                    'closed_tickets': ticket_stats['closed_tickets'],
+                    'name': admin_users.get(user_email, user_email)
+                })
+            
+            return sorted(stats, key=lambda x: x['request_count'], reverse=True)
+            
+    except sqlite3.Error as e:
+        print(f"Ошибка при получении статистики пользователей: {e}")
+        return []
+
 def process_command(chat_id, command): #обработка всех команд
     command = command.lower().strip()
     
+    log_user_request(chat_id, command)
+
     # Если пользователь ввел любую команду во время создания тикета - очищаем состояние
     if chat_id in user_states and user_states[chat_id].get("state", "").startswith("awaiting_ticket"):
         if not command.startswith("/support") and command not in ["/back", "/cancel"]:
@@ -1297,9 +1606,9 @@ def process_command(chat_id, command): #обработка всех команд
         send_about(chat_id)
     elif command == "/contacts":
         send_contacts(chat_id)
-    elif command == "/1c_docs":
+    elif command == "/docs_1c":
         send_1c_docs(chat_id)
-    elif command == "/1c_reviews":
+    elif command == "/reviews_1c":
         send_1c_reviews(chat_id)
     elif command == "/support":
         start_support_ticket(chat_id)
@@ -1310,8 +1619,8 @@ def process_command(chat_id, command): #обработка всех команд
                 text="Выберите тип тикетов:",
                 inline_keyboard_markup=json.dumps([
                     [
-                        {"text": "📌 Мои личные", "callbackData": "user_cmd_show_personal_tickets"},
-                        {"text": "💼 Назначенные мне", "callbackData": "user_cmd_show_assigned_tickets"}
+                        {"text": "📌 Мои личные", "callbackData": "user_cmd_show_personal_tickets", "style": "primary"},
+                        {"text": "💼 Назначенные мне", "callbackData": "user_cmd_show_assigned_tickets", "style": "primary"}
                     ],
                     [back_button]
                 ])
@@ -1409,6 +1718,7 @@ def button_cb(bot, event): #обработка кнопок
         elif callback_data == "user_cmd_show_assigned_tickets":
             show_admin_tickets(chat_id)
             return
+            
 
         # Обработка пользовательских команд
         elif callback_data.startswith('user_cmd_'):
@@ -1455,3 +1765,12 @@ bot.dispatcher.add_handler(BotButtonCommandHandler(callback=button_cb))
 print("Бот запущен...")
 bot.start_polling()
 bot.idle()
+if __name__ == "__main__":
+    Database.init_db()
+    init_events_table()
+    print("✅ Все базы данных готовы")
+
+    load_scheduled_reminders()  # <<< Здесь начинается восстановление уведомлений
+
+    bot.start_polling()
+    bot.idle()
