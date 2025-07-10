@@ -909,8 +909,8 @@ def show_help(chat_id): #действие при команде /help
         "/cancel - Прервать текущий диалог\n"
         "/back - Вернуться назад\n\n"
         "🔹 1С материалы:\n"
-        "/docs_1C - Документация и материалы по 1С\n"
-        "/reviews_1C - Отзывы о наших внедрениях 1С\n\n"
+        "/docs_1c - Документация и материалы по 1С\n"
+        "/reviews_1c - Отзывы о наших внедрениях 1С\n\n"
         "🔹 Поддержка:\n"
         "/support - Создать новый тикет\n"
         "/my_tickets - Просмотреть мои тикеты\n"
@@ -1289,9 +1289,9 @@ def process_command(chat_id, command): #обработка всех команд
         send_about(chat_id)
     elif command == "/contacts":
         send_contacts(chat_id)
-    elif command == "/docs_1C":
+    elif command == "/docs_1c":
         send_1c_docs(chat_id)
-    elif command == "/reviews_1C":
+    elif command == "/reviews_1c":
         send_1c_reviews(chat_id)
     elif command == "/support":
         start_support_ticket(chat_id)
