@@ -586,135 +586,152 @@ def assign_ticket(chat_id, admin_id):
 
 def show_user_tickets(chat_id):
     try:
-            conn = sqlite3.connect(DB_FILE)
-            conn.row_factory = sqlite3.Row  
-            cursor = conn.cursor()
-            cursor.execute('''
-            SELECT id, subject, status, assigned_to_name 
-            FROM tickets 
-            WHERE creator = ?
-            ORDER BY created_at DESC
-            ''', (chat_id,))
+        conn = sqlite3.connect(DB_FILE)
+        conn.row_factory = sqlite3.Row  
+        cursor = conn.cursor()
+        
+        # Получаем все тикеты, созданные этим пользователем
+        cursor.execute('''
+        SELECT id, subject, status, assigned_to, assigned_to_name 
+        FROM tickets 
+        WHERE creator = ?
+        ORDER BY created_at DESC
+        ''', (chat_id,))
+        
+        tickets = cursor.fetchall()
+        
+        if not tickets:
+            bot.send_text(chat_id=chat_id, text="❌ У вас нет созданных тикетов.")
+            return
+        
+        keyboard = []
+        for ticket in tickets:
+            # Формируем текст кнопки
+            status_emoji = "🟢" if ticket['status'] == 'Закрыт' else "🟡"
+            ticket_text = f"{ticket['id']}: {ticket['subject']} ({status_emoji} {ticket['status']})"
             
-            tickets = cursor.fetchall()
+            if ticket['assigned_to'] != chat_id:
+                ticket_text += f" → {ticket['assigned_to_name']}"
             
-            if not tickets:
-                bot.send_text(chat_id=chat_id, text="❌ У вас нет созданных тикетов.")
-                return
+            row = [{
+                "text": ticket_text,
+                "callbackData": f"view_ticket_{ticket['id']}"
+            }]
             
-            keyboard = []
-            for ticket in tickets:
-                row = [{
-                    "text": f"{ticket['id']}: {ticket['subject']} ({ticket['status']})",
-                    "callbackData": f"view_ticket_{ticket['id']}"
-                }]
-                
-                if ticket['status'] == "Открыт" and ticket['assigned_to_name'] == "Себе":
-                    row.append({
-                        "text": "✅ Закрыть",
-                        "callbackData": f"close_ticket_{ticket['id']}"
-                    })
-                
-                keyboard.append(row)
+            # Добавляем кнопку закрытия только если:
+            # 1. Тикет открыт
+            # 2. Назначен самому себе
+            if ticket['status'] == "Открыт" and ticket['assigned_to'] == chat_id:
+                row.append({
+                    "text": "✅ Закрыть",
+                    "callbackData": f"close_ticket_{ticket['id']}"
+                })
             
-            keyboard.append([back_button])
-            
-            bot.send_text(
-                chat_id=chat_id,
-                text="📋 Ваши тикеты:",
-                inline_keyboard_markup=json.dumps(keyboard)
-            )
-            
+            keyboard.append(row)
+        
+        keyboard.append([back_button])
+        
+        bot.send_text(
+            chat_id=chat_id,
+            text="📋 Ваши личные тикеты:",
+            inline_keyboard_markup=json.dumps(keyboard)
+        )
+        
     except sqlite3.Error as e:
         print(f"Ошибка базы данных: {e}")
         bot.send_text(chat_id=chat_id, text="❌ Ошибка при загрузке тикетов")
 
 def show_admin_tickets(chat_id):
     try:
-            conn = sqlite3.connect(DB_FILE)
-            conn.row_factory = sqlite3.Row  # ✅ ПРАВИЛЬНО
-            cursor = conn.cursor()
+        conn = sqlite3.connect(DB_FILE)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Получаем тикеты, назначенные этому администратору
+        cursor.execute('''
+        SELECT id, subject, status, creator 
+        FROM tickets 
+        WHERE assigned_to = ? AND status = 'Открыт'
+        ORDER BY created_at DESC
+        ''', (chat_id,))
+        
+        admin_tickets = cursor.fetchall()
+        
+        if not admin_tickets:
+            bot.send_text(chat_id=chat_id, text="❌ Нет назначенных вам тикетов.")
+            return
+        
+        keyboard = []
+        for ticket in admin_tickets:
+            creator_name = admin_users.get(ticket['creator'], ticket['creator'])
+            row = [
+                {
+                    "text": f"{ticket['id']}: {ticket['subject']} (от {creator_name})",
+                    "callbackData": f"view_ticket_{ticket['id']}"
+                },
+                {
+                    "text": "✅ Закрыть",
+                    "callbackData": f"close_ticket_{ticket['id']}"
+                }
+            ]
+            keyboard.append(row)
+        
+        keyboard.append([back_button])
+        
+        bot.send_text(
+            chat_id=chat_id,
+            text="📋 Назначенные вам тикеты:",
+            inline_keyboard_markup=json.dumps(keyboard))
             
-            cursor.execute('''
-            SELECT id, subject, status 
-            FROM tickets 
-            WHERE assigned_to = ? AND status = 'Открыт'
-            ORDER BY created_at DESC
-            ''', (chat_id,))
-            
-            admin_tickets = cursor.fetchall()
-            
-            if not admin_tickets:
-                bot.send_text(chat_id=chat_id, text="❌ Нет назначенных вам тикетов.")
-                return
-            
-            keyboard = []
-            for ticket in admin_tickets:
-                keyboard.append([
-                    {
-                        "text": f"{ticket['id']}: {ticket['subject']}",
-                        "callbackData": f"view_ticket_{ticket['id']}"
-                    },
-                    {
-                        "text": "✅ Закрыть",
-                        "callbackData": f"admin_cmd_close_ticket_{ticket['id']}"
-                    }
-                ])
-            
-            keyboard.append([back_button])
-            
-            bot.send_text(
-                chat_id=chat_id,
-                text="📋 Назначенные вам тикеты:",
-                inline_keyboard_markup=json.dumps(keyboard))
-                
     except sqlite3.Error as e:
         print(f"Ошибка БД: {e}")
         bot.send_text(chat_id=chat_id, text="❌ Ошибка при загрузке тикетов")
 
 def show_ticket_info(chat_id, ticket_id):
     try:
-            conn = sqlite3.connect(DB_FILE)
-            conn.row_factory = sqlite3.Row  # ✅ ПРАВИЛЬНО
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM tickets WHERE id = ?', (ticket_id,))
-            ticket = cursor.fetchone()
+        conn = sqlite3.connect(DB_FILE)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM tickets WHERE id = ?', (ticket_id,))
+        ticket = cursor.fetchone()
+        
+        if not ticket:
+            bot.send_text(chat_id=chat_id, text="❌ Тикет не найден.")
+            return
+        
+        info_text = (
+            f"ℹ️ Информация о тикете #{ticket['id']}:\n\n"
+            f"🔹 Тема: {ticket['subject']}\n"
+            f"🔹 Описание: {ticket['description']}\n"
+            f"🔹 Дедлайн: {ticket['deadline']}\n"
+            f"🔹 Статус: {ticket['status']}\n"
+            f"🔹 Создан: {ticket['created_at']}\n"
+            f"🔹 Создатель: {admin_users.get(ticket['creator'], ticket['creator'])}\n"
+            f"🔹 Назначен: {ticket['assigned_to_name']}\n"
+            f"🔹 Закрыт: {ticket['closed_at'] if ticket['closed_at'] else '—'}"
+        )
+        
+        keyboard = []
+        
+        # Проверяем, может ли пользователь закрыть тикет
+        can_close = False
+        if ticket['status'] == 'Открыт':
+            if ticket['assigned_to'] == chat_id:  # Пользователь - назначенный администратор
+                can_close = True
+        
+        if can_close:
+            keyboard.append([{
+                "text": "✅ Закрыть тикет",
+                "callbackData": f"close_ticket_{ticket['id']}"
+            }])
+        
+        keyboard.append([back_button])
+        
+        bot.send_text(
+            chat_id=chat_id,
+            text=info_text,
+            inline_keyboard_markup=json.dumps(keyboard))
             
-            if not ticket:
-                bot.send_text(chat_id=chat_id, text="❌ Тикет не найден.")
-                return
-            
-            info_text = (
-                f"ℹ️ Информация о тикете #{ticket['id']}:\n\n"
-                f"🔹 Тема: {ticket['subject']}\n"
-                f"🔹 Описание: {ticket['description']}\n"
-                f"🔹 Дедлайн: {ticket['deadline']}\n"
-                f"🔹 Статус: {ticket['status']}\n"
-                f"🔹 Создан: {ticket['created_at']}\n"
-                f"🔹 Создатель: {admin_users.get(ticket['creator'], ticket['creator'])}\n"
-                f"🔹 Назначен: {ticket['assigned_to_name']}\n"
-                f"🔹 Закрыт: {ticket['closed_at'] if ticket['closed_at'] else '—'}"
-            )
-            
-            keyboard = []
-            can_close = (
-                chat_id in admin_users or 
-                (ticket['creator'] == chat_id and ticket['assigned_to_name'] == "Себе" and ticket['status'] == "Открыт")
-            )
-            
-            if can_close and ticket['status'] == "Открыт":
-                keyboard.append([{
-                    "text": "✅ Закрыть тикет",
-                    "callbackData": f"close_ticket_{ticket['id']}"
-                }])
-            
-            keyboard.append([back_button])
-            
-            bot.send_text(
-                chat_id=chat_id,
-                text=info_text,
-                inline_keyboard_markup=json.dumps(keyboard))
-                
     except sqlite3.Error as e:
         print(f"Ошибка базы данных: {e}")
         bot.send_text(chat_id=chat_id, text="❌ Ошибка при загрузке информации о тикете")
@@ -735,7 +752,7 @@ def close_ticket(chat_id, ticket_id):
             
             # Получаем данные тикета
             cursor.execute('''
-            SELECT creator, assigned_to_name, status, subject 
+            SELECT creator, assigned_to, assigned_to_name, status, subject 
             FROM tickets 
             WHERE id = ?
             ''', (ticket_id,))
@@ -745,10 +762,19 @@ def close_ticket(chat_id, ticket_id):
                 bot.send_text(chat_id=chat_id, text="❌ Тикет не найден.")
                 return
                 
-            # Проверяем права на закрытие
-            if (chat_id not in admin_users and 
-                (ticket['creator'] != chat_id or ticket['assigned_to_name'] != "Себе")):
-                bot.send_text(chat_id=chat_id, text="❌ Вы не можете закрыть этот тикет.")
+            # Проверяем права на закрытие:
+            # 1. Тикет должен быть открыт
+            # 2. Пользователь должен быть либо создателем (если назначен себе), либо назначенным администратором
+            can_close = False
+            if ticket['status'] == 'Открыт':
+                if ticket['assigned_to'] == chat_id:  # Пользователь - назначенный администратор
+                    can_close = True
+            
+            if not can_close:
+                bot.send_text(
+                    chat_id=chat_id, 
+                    text="❌ Вы не можете закрыть этот тикет. Только назначенный сотрудник может его закрыть."
+                )
                 return
             
             # Обновляем статус
