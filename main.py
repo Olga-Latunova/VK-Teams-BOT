@@ -152,14 +152,11 @@ bot = Bot(token=TOKEN)
 
 # Состояния для обработки тикетов
 user_states = {}
-tickets = {}  # Хранение созданных тикетов {chat_id: [список тикетов]}
 events = {}   # Хранение созданных событий {chat_id: [список событий]}
 user_context = {}  # Хранит текущий контекст пользователя
 admin_users = set()  # Множество пользователей с админскими правами
 active_chats = set()  # Множество активных чатов с ботом
 user_tickets = {}  # Хранение тикетов пользователей {chat_id: [ticket_ids]}
-admin_tickets = {}  # Хранение тикетов администраторов {chat_id: [ticket_ids]}
-adm_password = str(105) # Пароль администратора
 admin_users = {
     "i.osipova@bot-60.bizml.ru": "Осипова Ирина",
     "a.kalinin@bot-60.bizml.ru": "Калинин Артур",
@@ -280,17 +277,6 @@ def show_my_stats(chat_id):
             text="❌ Произошла непредвиденная ошибка",
             inline_keyboard_markup=json.dumps([[back_button]])
         )
-
-def receiving_admin_access(chat_id, message_text): #получение администраторских прав с помощью пароля (а надо ли?...)
-    if message_text.strip() == adm_password:
-        admin_users.add(chat_id)
-        bot.send_text(
-            chat_id=chat_id,
-            text="🔓 Вы получили админские права!",
-        )
-        start_command_buttons(chat_id)
-        return True
-    return False
 
 def check_admin_access(chat_id): #получение администраторских прав
     if chat_id in admin_users:
@@ -736,14 +722,6 @@ def show_ticket_info(chat_id, ticket_id):
         print(f"Ошибка базы данных: {e}")
         bot.send_text(chat_id=chat_id, text="❌ Ошибка при загрузке информации о тикете")
 
-def delete_ticket(ticket_id):
-    conn = sqlite3.connect('tickets.db')
-    cursor = conn.cursor()
-    
-    cursor.execute('DELETE FROM tickets WHERE id = ?', (ticket_id,))
-    conn.commit()
-    conn.close()
-
 def close_ticket(chat_id, ticket_id):
     try:
         with sqlite3.connect(DB_FILE) as conn:
@@ -1114,106 +1092,6 @@ def show_all_stats(chat_id):
             inline_keyboard_markup=json.dumps([[back_button]])
         )
 
-def show_user_stats_options(chat_id):
-    if not admin_users:
-        bot.send_text(chat_id=chat_id, text="❌ Нет доступных пользователей для просмотра.")
-        return
-    
-    keyboard = []
-    admin_list = list(admin_users.items())
-    
-    for i in range(0, len(admin_list), 2):
-        row = []
-        # Первая кнопка в ряду
-        email, name = admin_list[i]
-        count = user_stats.get(email, 0)
-        open_tickets = len([t for t in tickets.values() if t.get("creator") == email and t.get("status") == "Открыт"])
-        row.append({
-            "text": f"{name} ({count}|{open_tickets}🎫)",
-            "callbackData": f"show_user_detail_{email}"
-        })
-        
-        # Вторая кнопка в ряду (если есть)
-        if i+1 < len(admin_list):
-            email, name = admin_list[i+1]
-            count = user_stats.get(email, 0)
-            open_tickets = len([t for t in tickets.values() if t.get("creator") == email and t.get("status") == "Открыт"])
-            row.append({
-                "text": f"{name} ({count}|{open_tickets}🎫)",
-                "callbackData": f"show_user_detail_{email}"
-            })
-        
-        keyboard.append(row)
-    
-    keyboard.append([back_button])
-    
-    bot.send_text(
-        chat_id=chat_id,
-        text="👥 Выберите пользователя (запросы|открытые тикеты):",
-        inline_keyboard_markup=json.dumps(keyboard)
-    )
-
-def show_all_users_stats(chat_id):
-    if not admin_users:
-        bot.send_text(chat_id=chat_id, text="❌ Нет данных о пользователях.")
-        return
-    
-    stats_text = "📊 Статистика всех администраторов:\n\n"
-    for email, name in admin_users.items():
-        count = usage_stats.get(email, {}).get('count', 0) if usage_stats else 0
-        stats_text += f"👤 {name}: {count} запросов\n"
-    
-    bot.send_text(
-        chat_id=chat_id,
-        text=stats_text,
-        inline_keyboard_markup=json.dumps([
-            [{"text": "⬅️ Назад", "callbackData": "admin_cmd_user_stats"}]
-        ])
-    )
-
-def show_user_detail(chat_id, user_email):
-    if user_email not in admin_users:
-        bot.send_text(chat_id=chat_id, text="❌ Пользователь не найден.")
-        return
-    
-    name = admin_users[user_email]
-    count = user_stats.get(user_email, 0)
-    # Считаем тикеты пользователя
-    created_tickets = len([t for t in tickets.values() if t.get("creator") == user_email])
-    open_tickets = len([t for t in tickets.values() if t.get("creator") == user_email and t.get("status") == "Открыт"])
-    assigned_tickets = len([t for t in tickets.values() if t.get("assigned_to") == user_email and t.get("status") == "Открыт"])
-    
-    bot.send_text(
-        chat_id=chat_id,
-        text=f"📊 Детальная статистика:\n\n"
-             f"👤 Имя: {name}\n"
-             f"📧 Email: {user_email}\n"
-             f"🔢 Всего запросов: {count}\n"
-             f"🎫 Всего создано тикетов: {created_tickets}\n"
-             f"🟢 Открытых тикетов: {open_tickets}\n"
-             f"📌 Назначено тикетов: {assigned_tickets}",
-        inline_keyboard_markup=json.dumps([
-            [{"text": "⬅️ Назад к списку", "callbackData": "admin_cmd_user_stats"}]
-        ])
-    )
-
-def show_all_users_stats(chat_id):
-    if not usage_stats:
-        bot.send_text(chat_id=chat_id, text="❌ Нет данных о пользователях.")
-        return
-    
-    stats_text = "📊 Статистика всех пользователей:\n\n"
-    for user_id, stats in sorted(usage_stats.items(), key=lambda x: x[1]['count'], reverse=True):
-        stats_text += f"👤 {stats['name']}: {stats['count']} запросов\n"
-    
-    bot.send_text(
-        chat_id=chat_id,
-        text=stats_text,
-        inline_keyboard_markup=json.dumps([
-            [{"text": "⬅️ Назад", "callbackData": "admin_cmd_user_stats"}]
-        ])
-    )
-
 def start_broadcast(chat_id): #создание рассылки
     if chat_id not in admin_users:
         processing_time
@@ -1512,14 +1390,6 @@ def process_command(chat_id, command): #обработка всех команд
             show_my_stats(chat_id)
     else:
         bot.send_text(chat_id=chat_id, text="Неизвестная команда. Введите /help")
-
-def simulate_user_message(chat_id, text): #команда от пользователя
-    processing_time
-    bot.send_text(
-        chat_id=chat_id,
-        text=f"Вы выбрали команду: {text}"
-    )
-    process_command(chat_id, text)
 
 def message_cb(bot, event): #обработка сообщений
     chat_id = event.from_chat
