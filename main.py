@@ -527,24 +527,29 @@ def process_ticket_creation(chat_id, message_text): # обработка и со
         )
 
     elif state == "awaiting_ticket_deadline":
+
         try:
             deadline = datetime.strptime(message_text, "%d.%m.%Y").date()
             ticket_data["deadline"] = deadline.strftime("%d.%m.%Y")
             user_states[chat_id]["state"] = "awaiting_ticket_admin"
 
-            admin_buttons = [{
-                "text": "👤 Назначить себе", 
-                "callbackData": "assign_ticket_self"
-            }]
-
+            admin_buttons = []
             for email, name in admin_users.items():
                 if email != chat_id:
                     admin_buttons.append({
-                        "text": f"👤 {name}",
+                        "text": f"👤 {name}", 
+                        "style": "primary",    # Устанавливаем синий стиль текста
                         "callbackData": f"assign_ticket_{email}"
                     })
 
             keyboard = [admin_buttons[i:i + 2] for i in range(0, len(admin_buttons), 2)]
+
+            keyboard.append([{
+                "text": "🟢 Назначить себе", 
+                "style": "primary",
+                "callbackData": "assign_ticket_self"
+            }])
+
             keyboard.append([back_button, cancel_button])
 
             time.sleep(0.2)
